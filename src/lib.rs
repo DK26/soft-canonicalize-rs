@@ -164,71 +164,48 @@ pub fn soft_canonicalize(path: &Path) -> io::Result<PathBuf> {
         std::env::current_dir()?.join(path)
     };
 
-    // Split path into components and process .. logically first
-    let mut components = Vec::new();
+    // Step 1: Lexical resolution (Python-style) - process .. and . components logically
+    let mut resolved_components = Vec::new();
+    let mut result = PathBuf::new();
+
+    // First, collect all the root components (Prefix, RootDir)
     for component in absolute_path.components() {
         match component {
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                result.push(component.as_os_str());
+            }
             std::path::Component::Normal(name) => {
-                components.push(name.to_os_string());
+                resolved_components.push(name);
             }
             std::path::Component::ParentDir => {
-                // Handle .. by removing the last component if any
-                if !components.is_empty() {
-                    components.pop();
+                // Handle .. by removing the last component if possible
+                if !resolved_components.is_empty() {
+                    resolved_components.pop();
                 }
-                // If components is empty, .. cannot go further (already at root level)
+                // If at root level, .. is ignored (cannot go above root)
             }
             std::path::Component::CurDir => {
                 // Ignore . components
             }
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
-                // These are handled by making the path absolute initially
+        }
+    }
+
+    // Step 2: Incremental symlink resolution - build path component by component
+    for component in resolved_components {
+        result.push(component);
+
+        // If this path exists, try to resolve any symlinks
+        if result.exists() {
+            if let Ok(canonical) = fs::canonicalize(&result) {
+                result = canonical;
             }
+            // If canonicalization fails, continue with the current path
+            // This handles cases where we have permission to see the path exists
+            // but not to canonicalize it
         }
     }
 
-    // Reconstruct the logical path
-    let mut logical_path = if absolute_path.has_root() {
-        // Start with root
-        if cfg!(windows) {
-            absolute_path.ancestors().last().unwrap().to_path_buf()
-        } else {
-            PathBuf::from("/")
-        }
-    } else {
-        PathBuf::new()
-    };
-
-    for component in &components {
-        logical_path.push(component);
-    }
-
-    // Now find the longest existing prefix of the logical path
-    let mut current = logical_path.as_path();
-    let mut non_existing_components = Vec::new();
-
-    while !current.exists() {
-        if let Some(file_name) = current.file_name() {
-            non_existing_components.push(file_name.to_os_string());
-        }
-
-        if let Some(parent) = current.parent() {
-            current = parent;
-        } else {
-            // We've reached the root and nothing exists, return the logical path
-            return Ok(logical_path);
-        }
-    }
-
-    // Canonicalize the existing prefix
-    let mut resolved_path = fs::canonicalize(current)?;
-
-    // Add back the non-existing components (they're already processed for .. components)
-    for component in non_existing_components.iter().rev() {
-        resolved_path.push(component);
-    }
-
-    Ok(resolved_path)
+    Ok(result)
 }
 
 #[cfg(test)]

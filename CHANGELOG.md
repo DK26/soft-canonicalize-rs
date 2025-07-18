@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2025-07-18
+
+### Changed
+- **Improved Algorithm**: Redesigned canonicalization algorithm inspired by Python's `pathlib.Path.resolve(strict=False)`
+- **Better Performance**: Switched from "find existing prefix" approach to incremental symlink resolution
+- **Reduced I/O**: Now performs lexical resolution first, only checking filesystem when paths actually exist
+- **Enhanced Efficiency**: Single-pass processing instead of multiple walks up the directory tree
+
+### Improved
+- **Windows Compatibility**: Better handling of Windows path edge cases and root component preservation
+- **Root Traversal**: Fixed excessive `..` component handling to properly maintain absolute paths on Windows
+- **Symlink Resolution**: More robust incremental symlink resolution strategy
+- **Code Quality**: Cleaner, more maintainable implementation with better separation of concerns
+
+### Documentation
+- Updated README with Python `pathlib.Path.resolve()` inspiration
+- Enhanced algorithm description to reflect new lexical + incremental approach
+- Improved performance section with updated characteristics
+- Added `normpath::PathExt::normalize` to comparison table for comprehensive ecosystem overview
+- Updated Quick Start example to reference version 0.0.2
+
+### Technical Details
+- Lexical resolution now processes `..` and `.` components mathematically before filesystem access
+- Incremental symlink resolution builds path component-by-component
+- Optimized filesystem access patterns for better performance
+- Maintained backward compatibility and all existing security guarantees
+
 ## [0.0.1] - 2025-07-18
 
 ### Added

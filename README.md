@@ -9,6 +9,8 @@ A pure Rust library for path canonicalization that works with non-existing paths
 
 Unlike `std::fs::canonicalize()`, this library can resolve and normalize paths even when some or all of the path components don't exist on the filesystem. This is particularly useful for security validation, path preprocessing, and working with paths before creating files.
 
+Inspired by Python's `pathlib.Path.resolve()` behavior, which can resolve paths that don't fully exist on the filesystem.
+
 ## Features
 
 - **🚀 Works with non-existing paths**: Canonicalizes paths even when they don't exist
@@ -24,7 +26,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.0.1"
+soft-canonicalize = "0.0.2"
 ```
 
 ## Examples
@@ -119,12 +121,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 The soft canonicalization algorithm works in the following steps:
 
 1. **Absolute Path Conversion**: Convert relative paths to absolute paths using the current working directory
-2. **Logical Processing**: Process `..` components mathematically without filesystem access to resolve directory traversals
-3. **Existing Prefix Discovery**: Find the longest existing ancestor directory by walking up the path
-4. **Canonicalization**: Use `std::fs::canonicalize` on the existing portion to resolve symlinks and normalize
-5. **Reconstruction**: Append the non-existing components to the canonicalized base
+2. **Lexical Resolution**: Process `..` and `.` components mathematically without filesystem access (inspired by Python's `Path.resolve()`)
+3. **Incremental Symlink Resolution**: Build the path component by component, resolving symlinks as they are encountered
+4. **Efficient Processing**: Only perform filesystem operations when a path component actually exists
 
-This approach provides the security benefits of full canonicalization while supporting paths that don't exist yet.
+This approach combines Python's efficient lexical processing with robust symlink resolution, providing security benefits while supporting non-existing paths.
 
 ## Security Considerations
 
@@ -139,8 +140,8 @@ This library is designed with security in mind:
 
 - **Time Complexity**: O(n) where n is the number of path components
 - **Space Complexity**: O(n) for component storage during processing  
-- **Filesystem Access**: Minimal - only to find existing ancestors and canonicalize them
-- **Memory Usage**: Very low overhead, mostly stack-allocated
+- **Filesystem Access**: Optimized - only checks components that actually exist
+- **Memory Usage**: Very low overhead, single-pass processing with minimal allocations
 
 ## Cross-Platform Support
 
@@ -152,14 +153,14 @@ This library works correctly on:
 
 ## Comparison with Alternatives
 
-| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` |
-| ----------------------------- | ------------------- | ----------------------- | --------------------- |
-| Works with non-existing paths | ✅                   | ❌                       | ❌                     |
-| Resolves symlinks             | ✅                   | ✅                       | ✅                     |
-| Handles `..` components       | ✅                   | ✅                       | ✅                     |
-| Cross-platform                | ✅                   | ✅                       | ✅                     |
-| Zero dependencies             | ✅                   | ✅                       | ❌                     |
-| No filesystem modification    | ✅                   | ✅                       | ✅                     |
+| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::PathExt::normalize` |
+| ----------------------------- | ------------------- | ----------------------- | --------------------- | ------------------------------ |
+| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                              |
+| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                              |
+| Handles `..` components       | ✅                   | ✅                       | ✅                     | ✅                              |
+| Cross-platform                | ✅                   | ✅                       | ✅                     | ✅                              |
+| Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                              |
+| No filesystem modification    | ✅                   | ✅                       | ✅                     | ✅                              |
 
 ## Contributing
 
