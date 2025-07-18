@@ -34,9 +34,9 @@ jobs:
           ## What's Changed
           
           - Check the [changelog](CHANGELOG.md) for detailed changes
-          - View the [documentation](https://docs.rs/jailed-path) for usage examples
+          - View the [documentation](https://docs.rs/soft-canonicalize) for usage examples
           
-          **Full Changelog**: https://github.com/DK26/jailed-path-rs/compare/v0.0.1...${{ github.ref_name }}
+          **Full Changelog**: https://github.com/DK26/soft-canonicalize-rs/compare/v0.0.1...${{ github.ref_name }}
         draft: false
         prerelease: false
         generate_release_notes: true
