@@ -3,6 +3,8 @@
 //! These tests ensure that soft_canonicalize behaves compatibly with std::fs::canonicalize
 //! for existing paths, but handles non-existing paths gracefully.
 
+#![allow(clippy::needless_borrows_for_generic_args)]
+
 use soft_canonicalize::soft_canonicalize;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
