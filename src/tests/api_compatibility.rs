@@ -84,35 +84,3 @@ fn test_generic_path_parameter_str_non_existing() -> std::io::Result<()> {
     assert_eq!(result, expected);
     Ok(())
 }
-
-#[test]
-fn test_std_compatibility_api() -> std::io::Result<()> {
-    let temp_dir = tempdir()?;
-
-    // Verify our API matches std::fs::canonicalize patterns exactly
-
-    // Pattern 1: String literal
-    let str_literal = temp_dir.path().to_string_lossy();
-    let our_result = soft_canonicalize(str_literal.as_ref())?;
-    let std_result = fs::canonicalize(str_literal.as_ref())?;
-    assert_eq!(our_result, std_result);
-
-    // Pattern 2: PathBuf by value
-    let pathbuf = temp_dir.path().to_path_buf();
-    let our_result = soft_canonicalize(pathbuf.clone())?;
-    let std_result = fs::canonicalize(pathbuf)?;
-    assert_eq!(our_result, std_result);
-
-    // Pattern 3: &PathBuf
-    let pathbuf = temp_dir.path().to_path_buf();
-    let our_result = soft_canonicalize(&pathbuf)?;
-    let std_result = fs::canonicalize(&pathbuf)?;
-    assert_eq!(our_result, std_result);
-
-    // Pattern 4: &Path
-    let our_result = soft_canonicalize(temp_dir.path())?;
-    let std_result = fs::canonicalize(temp_dir.path())?;
-    assert_eq!(our_result, std_result);
-
-    Ok(())
-}

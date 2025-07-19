@@ -33,18 +33,6 @@ fn test_non_existing_path() -> std::io::Result<()> {
 }
 
 #[test]
-fn test_deeply_non_existing_path() -> std::io::Result<()> {
-    let temp_dir = tempdir()?;
-    let deep_path = temp_dir.path().join("a/b/c/d/e/file.txt");
-
-    let result = soft_canonicalize(&deep_path)?;
-    let expected = fs::canonicalize(temp_dir.path())?.join("a/b/c/d/e/file.txt");
-
-    assert_eq!(result, expected);
-    Ok(())
-}
-
-#[test]
 fn test_relative_path() -> std::io::Result<()> {
     let result = soft_canonicalize(Path::new("non/existing/relative/path.txt"))?;
 

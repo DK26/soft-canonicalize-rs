@@ -401,6 +401,8 @@ mod tests {
     mod optimization;
     mod path_traversal;
     mod platform_specific;
+    mod python_inspired_tests;
+    mod python_lessons;
     mod security;
     mod std_behavior;
     mod symlink_depth;

@@ -25,31 +25,6 @@ fn test_relative_path_with_traversal() -> std::io::Result<()> {
 }
 
 #[test]
-fn test_parent_directory_traversal() -> std::io::Result<()> {
-    let temp_dir = tempdir()?;
-
-    // Create: temp_dir/level1/level2/
-    let level1 = temp_dir.path().join("level1");
-    let level2 = level1.join("level2");
-    fs::create_dir_all(&level2)?;
-
-    // Test path: temp_dir/level1/level2/subdir/../../../target.txt
-    // This should resolve to: temp_dir/target.txt
-    let test_path = level2
-        .join("subdir")
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("target.txt");
-
-    let result = soft_canonicalize(&test_path)?;
-    let expected = fs::canonicalize(temp_dir.path())?.join("target.txt");
-
-    assert_eq!(result, expected);
-    Ok(())
-}
-
-#[test]
 fn test_mixed_existing_and_nonexisting_with_traversal() -> std::io::Result<()> {
     let temp_dir = tempdir()?;
 
