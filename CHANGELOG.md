@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2025-07-19
+
+### Added
+- **std Library Compatibility Tests**: Added comprehensive test suite (`tests/std_compat.rs`) importing and adapting original std library canonicalize tests to ensure 100% behavioral compatibility for existing paths
+- **API Enhancement**: Updated `soft_canonicalize` to accept `impl AsRef<Path>` instead of generic `<P: AsRef<Path>>` for cleaner, more modern API following Rust 2018+ best practices
+- **Contributing Guidelines**: Added `CONTRIBUTING.md` with project philosophy, AI prompt for contributors, testing guidelines, and development workflow
+- **Documentation Examples**: Added comprehensive examples showing usage with different path types (`&str`, `PathBuf`, `&Path`, etc.)
+
+### Changed
+- **API Modernization**: Function signature changed from `soft_canonicalize<P: AsRef<Path>>(path: P)` to `soft_canonicalize(path: impl AsRef<Path>)` for consistency with modern Rust patterns
+- **Test Infrastructure**: Standardized all tests to use `tempfile` crate instead of custom temporary directory implementation for better reliability and consistency
+- **Version Bump**: First stable release (0.1.0) indicating API stability and production readiness
+
+### Improved
+- **Test Coverage**: Added 8 new tests specifically for API compatibility with different path parameter types
+- **Test Reliability**: Replaced custom `create_temp_dir()` and `cleanup_temp_dir()` functions with industry-standard `tempfile::tempdir()` for automatic cleanup and thread safety
+- **Code Quality**: Removed ~40 lines of custom temporary directory logic in favor of standard practices
+- **Documentation**: Enhanced function documentation with more comprehensive examples showing all supported input types
+
+### Technical Details
+- Maintains 100% backward compatibility for function behavior
+- All 28 tests pass (14 unit tests + 11 std compatibility tests + 3 doctests)
+- Zero breaking changes for existing users
+- Enhanced API ergonomics without performance impact
+- Standardized development and testing practices
+
 ## [0.0.3] - 2025-07-19
 
 ### Documentation

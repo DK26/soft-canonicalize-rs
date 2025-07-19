@@ -22,18 +22,19 @@
 //! use std::path::Path;
 //!
 //! # fn example() -> std::io::Result<()> {
+//! // Works with string paths (like std::fs::canonicalize)
+//! let from_str = soft_canonicalize("some/path/file.txt")?;
+//!
 //! // Works with existing paths (same as std::fs::canonicalize)
 //! let existing = soft_canonicalize(&std::env::temp_dir())?;
 //!
 //! // Also works with non-existing paths
 //! let non_existing = soft_canonicalize(
-//!     &std::env::temp_dir().join("some/deep/non/existing/path.txt")
+//!     std::env::temp_dir().join("some/deep/non/existing/path.txt")
 //! )?;
 //!
 //! // Resolves .. components logically
-//! let traversal = soft_canonicalize(
-//!     Path::new("some/path/../other/file.txt")
-//! )?;
+//! let traversal = soft_canonicalize("some/path/../other/file.txt")?;
 //! # Ok(())
 //! # }
 //! ```
@@ -213,16 +214,26 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
 ///
 /// ```rust
 /// use soft_canonicalize::soft_canonicalize;
-/// use std::path::Path;
+/// use std::path::{Path, PathBuf};
 ///
 /// # fn example() -> std::io::Result<()> {
+/// // Works with &str (like std::fs::canonicalize)
+/// let from_str = soft_canonicalize("some/path/file.txt")?;
+///
+/// // Works with &Path
+/// let from_path = soft_canonicalize(Path::new("some/path/file.txt"))?;
+///
+/// // Works with &PathBuf
+/// let path_buf = PathBuf::from("some/path/file.txt");
+/// let from_pathbuf = soft_canonicalize(&path_buf)?;
+///
 /// // Works with existing paths (same as std::fs::canonicalize)
 /// let existing = soft_canonicalize(&std::env::temp_dir())?;
 /// println!("Existing path: {:?}", existing);
 ///
 /// // Also works with non-existing paths
 /// let non_existing = soft_canonicalize(
-///     &std::env::temp_dir().join("some/deep/non/existing/path.txt")
+///     std::env::temp_dir().join("some/deep/non/existing/path.txt")
 /// )?;
 /// println!("Non-existing path: {:?}", non_existing);
 /// # Ok(())
@@ -268,7 +279,8 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only to find existing ancestors and canonicalize them
 ///
-pub fn soft_canonicalize(path: &Path) -> io::Result<PathBuf> {
+pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    let path = path.as_ref();
     let mut visited = HashSet::new();
     soft_canonicalize_internal(path, &mut visited)
 }
@@ -277,68 +289,41 @@ pub fn soft_canonicalize(path: &Path) -> io::Result<PathBuf> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn create_temp_dir() -> io::Result<PathBuf> {
-        let temp_base = std::env::temp_dir();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .subsec_nanos();
-        let temp_dir = temp_base.join(format!(
-            "soft_canonicalize_test_{}_{}",
-            std::process::id(),
-            nanos
-        ));
-        fs::create_dir_all(&temp_dir)?;
-        Ok(temp_dir)
-    }
-
-    fn cleanup_temp_dir(path: &Path) {
-        if path.exists() {
-            let _ = fs::remove_dir_all(path);
-        }
-    }
+    use tempfile::tempdir;
 
     #[test]
     fn test_existing_path() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
+        let temp_dir = tempdir()?;
 
         // Test with existing directory
-        let result = soft_canonicalize(&temp_dir)?;
-        let expected = fs::canonicalize(&temp_dir)?;
+        let result = soft_canonicalize(temp_dir.path())?;
+        let expected = fs::canonicalize(temp_dir.path())?;
 
         assert_eq!(result, expected);
-
-        cleanup_temp_dir(&temp_dir);
         Ok(())
     }
 
     #[test]
     fn test_non_existing_path() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
-        let non_existing = temp_dir.join("non_existing_file.txt");
+        let temp_dir = tempdir()?;
+        let non_existing = temp_dir.path().join("non_existing_file.txt");
 
         let result = soft_canonicalize(&non_existing)?;
-        let expected = fs::canonicalize(&temp_dir)?.join("non_existing_file.txt");
+        let expected = fs::canonicalize(temp_dir.path())?.join("non_existing_file.txt");
 
         assert_eq!(result, expected);
-
-        cleanup_temp_dir(&temp_dir);
         Ok(())
     }
 
     #[test]
     fn test_deeply_non_existing_path() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
-        let deep_path = temp_dir.join("a/b/c/d/e/file.txt");
+        let temp_dir = tempdir()?;
+        let deep_path = temp_dir.path().join("a/b/c/d/e/file.txt");
 
         let result = soft_canonicalize(&deep_path)?;
-        let expected = fs::canonicalize(&temp_dir)?.join("a/b/c/d/e/file.txt");
+        let expected = fs::canonicalize(temp_dir.path())?.join("a/b/c/d/e/file.txt");
 
         assert_eq!(result, expected);
-
-        cleanup_temp_dir(&temp_dir);
         Ok(())
     }
 
@@ -361,10 +346,10 @@ mod tests {
 
     #[test]
     fn test_parent_directory_traversal() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
+        let temp_dir = tempdir()?;
 
         // Create: temp_dir/level1/level2/
-        let level1 = temp_dir.join("level1");
+        let level1 = temp_dir.path().join("level1");
         let level2 = level1.join("level2");
         fs::create_dir_all(&level2)?;
 
@@ -378,20 +363,18 @@ mod tests {
             .join("target.txt");
 
         let result = soft_canonicalize(&test_path)?;
-        let expected = fs::canonicalize(&temp_dir)?.join("target.txt");
+        let expected = fs::canonicalize(temp_dir.path())?.join("target.txt");
 
         assert_eq!(result, expected);
-
-        cleanup_temp_dir(&temp_dir);
         Ok(())
     }
 
     #[test]
     fn test_mixed_existing_and_nonexisting_with_traversal() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
+        let temp_dir = tempdir()?;
 
         // Create: temp_dir/existing/
-        let existing_dir = temp_dir.join("existing");
+        let existing_dir = temp_dir.path().join("existing");
         fs::create_dir(&existing_dir)?;
 
         // Test: temp_dir/existing/nonexisting/../sibling.txt
@@ -405,25 +388,133 @@ mod tests {
         let expected = fs::canonicalize(&existing_dir)?.join("sibling.txt");
 
         assert_eq!(result, expected);
-
-        cleanup_temp_dir(&temp_dir);
         Ok(())
     }
 
     #[test]
     fn test_traversal_beyond_root() -> io::Result<()> {
-        let temp_dir = create_temp_dir()?;
+        let temp_dir = tempdir()?;
 
         // Test path with more .. than depth (should stop at root)
-        let test_path = temp_dir.join("../../../../../../../../../root_file.txt");
+        let test_path = temp_dir
+            .path()
+            .join("../../../../../../../../../root_file.txt");
 
         let result = soft_canonicalize(&test_path)?;
 
         // Should not escape beyond the filesystem root
         assert!(result.is_absolute());
-        assert!(!result.starts_with(&temp_dir));
+        assert!(!result.starts_with(temp_dir.path()));
+        Ok(())
+    }
 
-        cleanup_temp_dir(&temp_dir);
+    #[test]
+    fn test_generic_path_parameter_str() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test with &str (like std::fs::canonicalize supports)
+        let temp_str = temp_dir.path().to_string_lossy();
+        let result = soft_canonicalize(temp_str.as_ref())?;
+        let expected = fs::canonicalize(temp_dir.path())?;
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generic_path_parameter_string() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test with String (owned)
+        let temp_string = temp_dir.path().to_string_lossy().to_string();
+        let result = soft_canonicalize(temp_string)?;
+        let expected = fs::canonicalize(temp_dir.path())?;
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generic_path_parameter_pathbuf() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test with PathBuf (like std::fs::canonicalize supports)
+        let path_buf = temp_dir.path().to_path_buf();
+        let result = soft_canonicalize(path_buf)?;
+        let expected = fs::canonicalize(temp_dir.path())?;
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generic_path_parameter_pathbuf_ref() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test with &PathBuf (common usage pattern)
+        let path_buf = temp_dir.path().to_path_buf();
+        let result = soft_canonicalize(&path_buf)?;
+        let expected = fs::canonicalize(temp_dir.path())?;
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generic_path_parameter_path_ref() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test with &Path (original API still works)
+        let path_ref = temp_dir.path();
+        let result = soft_canonicalize(path_ref)?;
+        let expected = fs::canonicalize(temp_dir.path())?;
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_generic_path_parameter_str_non_existing() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Test string with non-existing path
+        let non_existing_str = format!("{}/non/existing/file.txt", temp_dir.path().display());
+        let result = soft_canonicalize(non_existing_str)?;
+        let expected = fs::canonicalize(temp_dir.path())?.join("non/existing/file.txt");
+
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_std_compatibility_api() -> io::Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Verify our API matches std::fs::canonicalize patterns exactly
+
+        // Pattern 1: String literal
+        let str_literal = temp_dir.path().to_string_lossy();
+        let our_result = soft_canonicalize(str_literal.as_ref())?;
+        let std_result = fs::canonicalize(str_literal.as_ref())?;
+        assert_eq!(our_result, std_result);
+
+        // Pattern 2: PathBuf by value
+        let pathbuf = temp_dir.path().to_path_buf();
+        let our_result = soft_canonicalize(pathbuf.clone())?;
+        let std_result = fs::canonicalize(pathbuf)?;
+        assert_eq!(our_result, std_result);
+
+        // Pattern 3: &PathBuf
+        let pathbuf = temp_dir.path().to_path_buf();
+        let our_result = soft_canonicalize(&pathbuf)?;
+        let std_result = fs::canonicalize(&pathbuf)?;
+        assert_eq!(our_result, std_result);
+
+        // Pattern 4: &Path
+        let our_result = soft_canonicalize(temp_dir.path())?;
+        let std_result = fs::canonicalize(temp_dir.path())?;
+        assert_eq!(our_result, std_result);
+
         Ok(())
     }
 }
