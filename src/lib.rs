@@ -402,5 +402,6 @@ mod tests {
     mod path_traversal;
     mod platform_specific;
     mod security;
+    mod std_behavior;
     mod symlink_depth;
 }

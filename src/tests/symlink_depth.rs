@@ -3,11 +3,9 @@ use tempfile::TempDir;
 
 #[test]
 fn test_symlink_depth_limit() {
-    // This test creates a very long symlink chain to test depth limiting
-    // We won't actually create 60+ symlinks due to test performance,
-    // but we can verify the constant exists and is used
+    // This test verifies our symlink depth constants match expected OS limits
 
-    // Test that our constants are reasonable
+    // Test that our constants are reasonable and match OS expectations
     #[cfg(target_os = "windows")]
     assert_eq!(crate::MAX_SYMLINK_DEPTH, 63);
 
@@ -43,7 +41,57 @@ fn test_symlink_depth_documentation() {
     #[cfg(windows)]
     {
         // Windows symlink creation requires admin privileges in most cases,
-        // so we'll just verify the constant exists
+        // so we'll just verify the constant exists and behavior is correct
         let _depth = crate::MAX_SYMLINK_DEPTH;
+
+        // Test that we handle Windows path edge cases
+        let result = soft_canonicalize("");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
+}
+
+#[test]
+fn test_python_style_edge_cases() {
+    // Test edge cases inspired by Python's pathlib.Path.resolve() robustness
+
+    // Empty path - should fail gracefully
+    let result = soft_canonicalize("");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+
+    // Single dot - should resolve to current directory
+    let result = soft_canonicalize(".");
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+    assert!(resolved.is_absolute());
+
+    // Double dot - should resolve to parent directory
+    let result = soft_canonicalize("..");
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+    assert!(resolved.is_absolute());
+
+    // Multiple dots and slashes - should normalize
+    let result = soft_canonicalize("./././../.");
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+    assert!(resolved.is_absolute());
+
+    // Test with existing temp directory + non-existing suffix (Python-style)
+    let tmpdir = TempDir::new().expect("Failed to create temp dir");
+    let test_path = tmpdir.path().join("non").join("existing").join("path.txt");
+
+    let result = soft_canonicalize(&test_path);
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+
+    // Should start with the canonicalized temp directory
+    let canonical_tmp = std::fs::canonicalize(tmpdir.path()).unwrap();
+    assert!(resolved.starts_with(canonical_tmp));
+
+    // Should end with our non-existing suffix
+    assert!(resolved.to_string_lossy().contains("non"));
+    assert!(resolved.to_string_lossy().contains("existing"));
+    assert!(resolved.to_string_lossy().contains("path.txt"));
 }
