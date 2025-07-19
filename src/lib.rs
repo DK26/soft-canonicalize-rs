@@ -65,6 +65,13 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+/// Maximum number of symlinks to follow before giving up.
+/// This matches the behavior of std::fs::canonicalize and OS limits:
+/// - Linux: ELOOP limit is typically 40
+/// - Windows: Similar limit around 63
+/// - Other Unix systems: Usually 32-40
+pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else { 40 };
+
 /// Internal helper function that finds the boundary between existing and non-existing path components.
 ///
 /// Returns (existing_prefix, non_existing_suffix) where existing_prefix is the longest
@@ -73,7 +80,16 @@ use std::{fs, io};
 fn find_existing_boundary_with_symlinks(
     path: &Path,
     visited: &mut HashSet<PathBuf>,
+    symlink_depth: usize,
 ) -> io::Result<(PathBuf, Vec<std::ffi::OsString>)> {
+    // Check symlink depth limit to match std::fs::canonicalize behavior
+    if symlink_depth > MAX_SYMLINK_DEPTH {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Too many levels of symbolic links",
+        ));
+    }
+
     // Convert to absolute path first
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
@@ -145,7 +161,11 @@ fn find_existing_boundary_with_symlinks(
 
                         // Recursively process the target
                         let (symlink_prefix, symlink_suffix) =
-                            find_existing_boundary_with_symlinks(&full_target, visited)?;
+                            find_existing_boundary_with_symlinks(
+                                &full_target,
+                                visited,
+                                symlink_depth + 1,
+                            )?;
 
                         // Remove from visited set
                         visited.remove(&test_path);
@@ -179,7 +199,19 @@ fn find_existing_boundary_with_symlinks(
 ///
 /// This optimized version finds the existing/non-existing boundary and uses std::fs::canonicalize
 /// only on the existing portion for maximum efficiency while maintaining security and symlink handling.
-fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io::Result<PathBuf> {
+fn soft_canonicalize_internal(
+    path: &Path,
+    visited: &mut HashSet<PathBuf>,
+    symlink_depth: usize,
+) -> io::Result<PathBuf> {
+    // Check symlink depth limit to match std::fs::canonicalize behavior
+    if symlink_depth > MAX_SYMLINK_DEPTH {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Too many levels of symbolic links",
+        ));
+    }
+
     // Handle empty path like std::fs::canonicalize - should fail
     if path.as_os_str().is_empty() {
         return Err(io::Error::new(
@@ -214,7 +246,8 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
                 visited.insert(path.to_path_buf());
 
                 // Recursively canonicalize the target (which may not exist)
-                let result = soft_canonicalize_internal(&resolved_target, visited);
+                let result =
+                    soft_canonicalize_internal(&resolved_target, visited, symlink_depth + 1);
 
                 // Remove from visited set after recursion
                 visited.remove(path);
@@ -226,7 +259,7 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
 
     // Find the boundary between existing and non-existing components
     let (existing_prefix, non_existing_suffix) =
-        find_existing_boundary_with_symlinks(path, visited)?;
+        find_existing_boundary_with_symlinks(path, visited, symlink_depth)?;
 
     // Canonicalize the existing prefix (this handles all symlinks in the existing portion)
     let canonical_prefix = if existing_prefix.as_os_str().is_empty()
@@ -357,7 +390,7 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
     let mut visited = HashSet::new();
-    soft_canonicalize_internal(path, &mut visited)
+    soft_canonicalize_internal(path, &mut visited, 0)
 }
 
 #[cfg(test)]
@@ -369,4 +402,5 @@ mod tests {
     mod path_traversal;
     mod platform_specific;
     mod security;
+    mod symlink_depth;
 }
