@@ -125,47 +125,40 @@ fn find_existing_boundary_with_symlinks(
                     ));
                 }
 
-                // Check if this is a symlink
-                if test_path.is_symlink() {
-                    match fs::read_link(&test_path) {
-                        Ok(target) => {
-                            // Add this symlink to visited set
-                            visited.insert(test_path.clone());
+                match fs::read_link(&test_path) {
+                    Ok(target) => {
+                        // Add this symlink to visited set
+                        visited.insert(test_path.clone());
 
-                            // Resolve the target path
-                            let resolved_target = if target.is_absolute() {
-                                target
-                            } else {
-                                current_path.join(target)
-                            };
+                        // Resolve the target path
+                        let resolved_target = if target.is_absolute() {
+                            target
+                        } else {
+                            current_path.join(target)
+                        };
 
-                            // Append remaining components to the target
-                            let mut full_target = resolved_target;
-                            for remaining in &resolved_components[i + 1..] {
-                                full_target.push(remaining);
-                            }
-
-                            // Recursively process the target
-                            let (symlink_prefix, symlink_suffix) =
-                                find_existing_boundary_with_symlinks(&full_target, visited)?;
-
-                            // Remove from visited set
-                            visited.remove(&test_path);
-
-                            return Ok((symlink_prefix, symlink_suffix));
+                        // Append remaining components to the target
+                        let mut full_target = resolved_target;
+                        for remaining in &resolved_components[i + 1..] {
+                            full_target.push(remaining);
                         }
-                        Err(_) => {
-                            // Broken symlink - we still need to resolve it lexically
-                            // Continue processing as if it doesn't exist, but we'll handle the
-                            // symlink target resolution in the calling function
-                            remaining_components = resolved_components[i..].to_vec();
-                            break;
-                        }
+
+                        // Recursively process the target
+                        let (symlink_prefix, symlink_suffix) =
+                            find_existing_boundary_with_symlinks(&full_target, visited)?;
+
+                        // Remove from visited set
+                        visited.remove(&test_path);
+
+                        return Ok((symlink_prefix, symlink_suffix));
                     }
-                } else {
-                    // Not a symlink and doesn't exist
-                    remaining_components = resolved_components[i..].to_vec();
-                    break;
+                    Err(_) => {
+                        // Broken symlink - we still need to resolve it lexically
+                        // Continue processing as if it doesn't exist, but we'll handle the
+                        // symlink target resolution in the calling function
+                        remaining_components = resolved_components[i..].to_vec();
+                        break;
+                    }
                 }
             } else {
                 // Regular file/directory that exists
