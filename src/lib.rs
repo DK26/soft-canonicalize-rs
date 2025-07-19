@@ -60,8 +60,118 @@
 //! This approach provides the security benefits of full canonicalization while
 //! supporting paths that don't exist yet.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
+
+/// Internal helper function that performs soft canonicalization with symlink cycle detection.
+///
+/// This function tracks visited symlinks to detect and prevent infinite recursion cycles.
+fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io::Result<PathBuf> {
+    // Handle empty path like std::fs::canonicalize - should fail
+    if path.as_os_str().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "The system cannot find the path specified.",
+        ));
+    }
+
+    // Convert to absolute path if relative
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+
+    // Step 1: Lexical resolution (Python-style) - process .. and . components logically
+    let mut resolved_components = Vec::new();
+    let mut result = PathBuf::new();
+
+    // First, collect all the root components (Prefix, RootDir)
+    for component in absolute_path.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                result.push(component.as_os_str());
+            }
+            std::path::Component::Normal(name) => {
+                resolved_components.push(name);
+            }
+            std::path::Component::ParentDir => {
+                // Handle .. by removing the last component if possible
+                if !resolved_components.is_empty() {
+                    resolved_components.pop();
+                }
+                // If at root level, .. is ignored (cannot go above root)
+            }
+            std::path::Component::CurDir => {
+                // Ignore . components
+            }
+        }
+    }
+
+    // Step 2: Incremental symlink resolution - build path component by component
+    for component in resolved_components {
+        result.push(component);
+
+        // Check if this path is a symlink (even if target doesn't exist)
+        if result.is_symlink() {
+            // Check for symlink cycle by seeing if we've already visited this symlink
+            if visited.contains(&result) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Too many levels of symbolic links",
+                ));
+            }
+
+            // Try to read the symlink target
+            match fs::read_link(&result) {
+                Ok(target) => {
+                    // Add this symlink to the visited set to detect cycles
+                    let symlink_path = result.clone();
+                    visited.insert(symlink_path.clone());
+
+                    // Remove the symlink component we just added
+                    result.pop();
+
+                    // Resolve the target path
+                    let resolved_target = if target.is_absolute() {
+                        target
+                    } else {
+                        result.join(target)
+                    };
+
+                    // Recursively canonicalize the target with cycle detection
+                    match soft_canonicalize_internal(&resolved_target, visited) {
+                        Ok(canonical_target) => {
+                            result = canonical_target;
+                        }
+                        Err(e) => {
+                            // If we get an error (like cycle detection), propagate it
+                            return Err(e);
+                        }
+                    }
+
+                    // Remove from visited set when we're done with this symlink
+                    visited.remove(&symlink_path);
+                }
+                Err(_) => {
+                    // If we can't read the symlink, treat it as a regular path
+                    // and continue
+                }
+            }
+        } else if result.exists() {
+            // For non-symlink existing paths, use standard canonicalization
+            if let Ok(canonical) = fs::canonicalize(&result) {
+                result = canonical;
+            }
+            // If canonicalization fails, continue with the current path
+            // This handles cases where we have permission to see the path exists
+            // but not to canonicalize it
+        }
+    }
+
+    Ok(result)
+}
 
 /// Performs "soft" canonicalization on a path.
 ///
@@ -79,14 +189,15 @@ use std::{fs, io};
 ///
 /// 1. **Absolute Path Conversion**: Converts relative paths to absolute paths
 /// 2. **Logical Processing**: Processes `..` components mathematically without filesystem access
-/// 3. **Existing Prefix Discovery**: Finds the longest existing ancestor
-/// 4. **Canonicalization**: Uses `std::fs::canonicalize` on the existing portion
-/// 5. **Reconstruction**: Appends non-existing components to the canonical base
+/// 3. **Symlink Cycle Detection**: Tracks visited symlinks to prevent infinite recursion
+/// 4. **Existing Prefix Discovery**: Finds the longest existing ancestor
+/// 5. **Canonicalization**: Uses `std::fs::canonicalize` on the existing portion
+/// 6. **Reconstruction**: Appends non-existing components to the canonical base
 ///
 /// # Security Considerations
 ///
 /// - **Directory Traversal**: `..` components are resolved logically before filesystem access
-/// - **Symlink Resolution**: Existing symlinks are resolved using standard canonicalization
+/// - **Symlink Resolution**: Existing symlinks are resolved with proper cycle detection
 /// - **No Side Effects**: No temporary files or directories are created during the process
 ///
 /// # Cross-Platform Support
@@ -146,6 +257,7 @@ use std::{fs, io};
 /// - **Permission Denied**: When the current directory cannot be accessed (for relative paths)
 /// - **Invalid Path**: When the path contains invalid Unicode or system-specific issues
 /// - **Canonicalization Failure**: When the existing portion cannot be canonicalized
+/// - **Symlink Cycles**: When circular symlink references are detected
 ///
 /// Note: This function does NOT return an error for non-existent paths, as supporting
 /// such paths is the primary purpose of soft canonicalization.
@@ -157,55 +269,8 @@ use std::{fs, io};
 /// - **Filesystem Access**: Minimal - only to find existing ancestors and canonicalize them
 ///
 pub fn soft_canonicalize(path: &Path) -> io::Result<PathBuf> {
-    // Convert to absolute path if relative
-    let absolute_path = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(path)
-    };
-
-    // Step 1: Lexical resolution (Python-style) - process .. and . components logically
-    let mut resolved_components = Vec::new();
-    let mut result = PathBuf::new();
-
-    // First, collect all the root components (Prefix, RootDir)
-    for component in absolute_path.components() {
-        match component {
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
-                result.push(component.as_os_str());
-            }
-            std::path::Component::Normal(name) => {
-                resolved_components.push(name);
-            }
-            std::path::Component::ParentDir => {
-                // Handle .. by removing the last component if possible
-                if !resolved_components.is_empty() {
-                    resolved_components.pop();
-                }
-                // If at root level, .. is ignored (cannot go above root)
-            }
-            std::path::Component::CurDir => {
-                // Ignore . components
-            }
-        }
-    }
-
-    // Step 2: Incremental symlink resolution - build path component by component
-    for component in resolved_components {
-        result.push(component);
-
-        // If this path exists, try to resolve any symlinks
-        if result.exists() {
-            if let Ok(canonical) = fs::canonicalize(&result) {
-                result = canonical;
-            }
-            // If canonicalization fails, continue with the current path
-            // This handles cases where we have permission to see the path exists
-            // but not to canonicalize it
-        }
-    }
-
-    Ok(result)
+    let mut visited = HashSet::new();
+    soft_canonicalize_internal(path, &mut visited)
 }
 
 #[cfg(test)]

@@ -7,25 +7,19 @@
 
 A pure Rust library for path canonicalization that works with non-existing paths.
 
-Unlike `std::fs::canonicalize()`, this library can resolve and normalize paths even when some or all of the path components don't exist on the filesystem. This is particularly useful for security validation, path preprocessing, and working with paths before creating files.
+Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. Useful for security validation, path preprocessing, and working with paths before file creation.
 
-Inspired by Python's `pathlib.Path.resolve()` behavior, which can resolve paths that don't fully exist on the filesystem.
+**Passes all original std library canonicalize tests plus additional compatibility tests.**
+
+Inspired by Python's `pathlib.Path.resolve()` behavior.
 
 ## Features
 
-- **🚀 Works with non-existing paths**: Canonicalizes paths even when they don't exist
-- **🌍 Cross-platform**: Supports Windows, macOS, and Linux
-- **⚡ Zero dependencies**: No external dependencies beyond std
-- **🔒 Security focused**: Proper handling of `..` components and symlinks
-- **🧮 Pure algorithm**: No filesystem modification during canonicalization
-- **📏 Zero-cost abstractions**: Minimal performance overhead
-
-## Use Cases
-
-Common scenarios where `soft_canonicalize` excels:
-- **Web servers**: Path validation before file creation
-- **Build tools**: Resolving non-existing output paths  
-- **Security applications**: Safe path handling with symlink resolution
+- **🚀 Works with non-existing paths**: Canonicalizes paths that don't exist yet
+- **🌍 Cross-platform**: Windows, macOS, and Linux support
+- **⚡ Zero dependencies**: Only uses std library
+- **🔒 Security focused**: Proper `..` and symlink handling
+- **🧮 Pure algorithm**: No filesystem modification
 
 ## Quick Start
 
@@ -33,57 +27,52 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.0.3"
+soft-canonicalize = "0.1.0"
 ```
 
-## Example
+### Basic Usage
 
 ```rust
 use soft_canonicalize::soft_canonicalize;
-use std::path::Path;
 
 // Works with existing and non-existing paths
 let path = soft_canonicalize("some/path/../other/file.txt")?;
 
-// Security validation (jail must exist)
+// Security validation
 fn is_safe_path(user_path: &str, jail: &Path) -> std::io::Result<bool> {
     let canonical_user = soft_canonicalize(user_path)?;
-    let canonical_jail = std::fs::canonicalize(jail)?; // Jail must exist
+    let canonical_jail = std::fs::canonicalize(jail)?;
     Ok(canonical_user.starts_with(canonical_jail))
 }
-
-// Note: Use std::fs::canonicalize when paths must exist,
-// soft_canonicalize when they may not exist yet
 ```
 
-## Algorithm
+## Use Cases
 
-Combines Python's `Path.resolve()` approach with robust symlink resolution:
+- **Web servers**: Path validation before file creation
+- **Build tools**: Resolving non-existing output paths  
+- **Security applications**: Safe path handling with symlink resolution
+
+## How It Works
 
 1. **Lexical Resolution**: Process `..` and `.` components without filesystem access
-2. **Incremental Symlink Resolution**: Resolve symlinks as path components are encountered
-3. **Optimized Access**: Only perform filesystem operations when components actually exist
+2. **Incremental Symlink Resolution**: Resolve symlinks as encountered
+3. **Optimized Access**: Only check filesystem when components exist
 
-## Security Considerations
+## Performance & Compatibility
 
-This library is designed with security in mind:
+- **Time**: O(n) path components
+- **Space**: O(n) component storage  
+- **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
+- **Testing**: 100% behavioral compatibility with `std::fs::canonicalize` for existing paths
 
-- **Directory Traversal Prevention**: `..` components are resolved logically before any filesystem access
-- **Symlink Resolution**: Existing symlinks are properly resolved using standard canonicalization  
-- **No Side Effects**: No temporary files or directories are created during the canonicalization process
-- **Path Injection Protection**: Proper handling of various path formats and edge cases
+## Security
 
-**Critical Security Advantage**: Unlike `path_absolutize`, this library resolves symlinks, preventing jail break attacks where malicious symlinks point outside the intended directory boundaries.
+- **Directory Traversal Prevention**: `..` components resolved before filesystem access
+- **Symlink Resolution**: Existing symlinks properly resolved
+- **No Side Effects**: No temporary files created
+- **Path Injection Protection**: Handles various path formats safely
 
-## Performance
-
-- **Time**: O(n) where n is the number of path components
-- **Space**: O(n) for component storage
-- **Filesystem Access**: Optimized - only checks existing components
-
-## Cross-Platform Support
-
-Works correctly on Windows (drive letters, UNC paths), Unix-like systems (symlinks), and handles path separators properly across all platforms.
+**Security Advantage**: Resolves symlinks, preventing jail break attacks where malicious symlinks point outside intended boundaries (unlike `path_absolutize`).
 
 ## Comparison with Alternatives
 
@@ -96,7 +85,7 @@ Works correctly on Windows (drive letters, UNC paths), Unix-like systems (symlin
 | Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ❌ (vulnerable)                | ✅                   |
 | Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ✅ (virtual root)              | ✅                   |
 
-*`jailed-path` uses `soft_canonicalize` as a dependency for path resolution.
+*`jailed-path` uses `soft_canonicalize` as a dependency.
 
 ## Contributing
 
@@ -104,12 +93,9 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-This project is licensed under either of
-
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+Licensed under either of:
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 ## Changelog
 
