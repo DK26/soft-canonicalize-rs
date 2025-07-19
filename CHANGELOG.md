@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2025-07-19
+
+### Documentation
+- **Streamlined README**: Reduced verbosity and condensed examples for better readability
+- **Added Security Examples**: Added security validation examples with proper jail directory handling
+- **Enhanced Comparison Table**: Added "Prevents symlink jail breaks" row highlighting security advantages
+- **Added Ecosystem Context**: Added footnote showing `jailed-path` dependency relationship
+- **Added Usage Guidance**: Added note clarifying when to use `std::fs::canonicalize` vs `soft_canonicalize`
+
 ## [0.0.2] - 2025-07-18
 
 ### Changed
