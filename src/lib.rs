@@ -65,37 +65,34 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-/// Internal helper function that performs soft canonicalization with symlink cycle detection.
+/// Internal helper function that finds the boundary between existing and non-existing path components.
 ///
-/// This function tracks visited symlinks to detect and prevent infinite recursion cycles.
-fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io::Result<PathBuf> {
-    // Handle empty path like std::fs::canonicalize - should fail
-    if path.as_os_str().is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "The system cannot find the path specified.",
-        ));
-    }
-
-    // Convert to absolute path if relative
+/// Returns (existing_prefix, non_existing_suffix) where existing_prefix is the longest
+/// existing directory path, and non_existing_suffix contains the remaining components.
+/// This version properly handles symlinks by processing components incrementally.
+fn find_existing_boundary_with_symlinks(
+    path: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> io::Result<(PathBuf, Vec<std::ffi::OsString>)> {
+    // Convert to absolute path first
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
     } else {
         std::env::current_dir()?.join(path)
     };
 
-    // Step 1: Lexical resolution (Python-style) - process .. and . components logically
+    // First, do lexical resolution of .. and . components
     let mut resolved_components = Vec::new();
     let mut result = PathBuf::new();
 
-    // First, collect all the root components (Prefix, RootDir)
+    // Collect root components (Prefix, RootDir)
     for component in absolute_path.components() {
         match component {
             std::path::Component::RootDir | std::path::Component::Prefix(_) => {
                 result.push(component.as_os_str());
             }
             std::path::Component::Normal(name) => {
-                resolved_components.push(name);
+                resolved_components.push(name.to_os_string());
             }
             std::path::Component::ParentDir => {
                 // Handle .. by removing the last component if possible
@@ -110,65 +107,150 @@ fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io
         }
     }
 
-    // Step 2: Incremental symlink resolution - build path component by component
-    for component in resolved_components {
-        result.push(component);
+    // Now build path incrementally, handling symlinks as we go
+    let mut current_path = result;
+    let mut remaining_components = resolved_components.clone();
 
-        // Check if this path is a symlink (even if target doesn't exist)
-        if result.is_symlink() {
-            // Check for symlink cycle by seeing if we've already visited this symlink
-            if visited.contains(&result) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Too many levels of symbolic links",
-                ));
-            }
+    for (i, component) in resolved_components.iter().enumerate() {
+        let test_path = current_path.join(component);
 
-            // Try to read the symlink target
-            match fs::read_link(&result) {
-                Ok(target) => {
-                    // Add this symlink to the visited set to detect cycles
-                    let symlink_path = result.clone();
-                    visited.insert(symlink_path.clone());
+        if test_path.exists() {
+            // Check if this is a symlink
+            if test_path.is_symlink() {
+                // Check for symlink cycle
+                if visited.contains(&test_path) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Too many levels of symbolic links",
+                    ));
+                }
 
-                    // Remove the symlink component we just added
-                    result.pop();
+                // Check if this is a symlink
+                if test_path.is_symlink() {
+                    match fs::read_link(&test_path) {
+                        Ok(target) => {
+                            // Add this symlink to visited set
+                            visited.insert(test_path.clone());
 
-                    // Resolve the target path
-                    let resolved_target = if target.is_absolute() {
-                        target
-                    } else {
-                        result.join(target)
-                    };
+                            // Resolve the target path
+                            let resolved_target = if target.is_absolute() {
+                                target
+                            } else {
+                                current_path.join(target)
+                            };
 
-                    // Recursively canonicalize the target with cycle detection
-                    match soft_canonicalize_internal(&resolved_target, visited) {
-                        Ok(canonical_target) => {
-                            result = canonical_target;
+                            // Append remaining components to the target
+                            let mut full_target = resolved_target;
+                            for remaining in &resolved_components[i + 1..] {
+                                full_target.push(remaining);
+                            }
+
+                            // Recursively process the target
+                            let (symlink_prefix, symlink_suffix) =
+                                find_existing_boundary_with_symlinks(&full_target, visited)?;
+
+                            // Remove from visited set
+                            visited.remove(&test_path);
+
+                            return Ok((symlink_prefix, symlink_suffix));
                         }
-                        Err(e) => {
-                            // If we get an error (like cycle detection), propagate it
-                            return Err(e);
+                        Err(_) => {
+                            // Broken symlink - we still need to resolve it lexically
+                            // Continue processing as if it doesn't exist, but we'll handle the
+                            // symlink target resolution in the calling function
+                            remaining_components = resolved_components[i..].to_vec();
+                            break;
                         }
                     }
-
-                    // Remove from visited set when we're done with this symlink
-                    visited.remove(&symlink_path);
+                } else {
+                    // Not a symlink and doesn't exist
+                    remaining_components = resolved_components[i..].to_vec();
+                    break;
                 }
-                Err(_) => {
-                    // If we can't read the symlink, treat it as a regular path
-                    // and continue
-                }
+            } else {
+                // Regular file/directory that exists
+                current_path = test_path;
+                remaining_components = resolved_components[i + 1..].to_vec();
             }
-        } else if result.exists() {
-            // For non-symlink existing paths, use standard canonicalization
-            if let Ok(canonical) = fs::canonicalize(&result) {
-                result = canonical;
-            }
-            // If canonicalization fails, continue with the current path
-            // This handles cases where we have permission to see the path exists
-            // but not to canonicalize it
+        } else {
+            // Found the boundary - everything from this component onwards doesn't exist
+            remaining_components = resolved_components[i..].to_vec();
+            break;
         }
+    }
+
+    Ok((current_path, remaining_components))
+}
+
+/// Internal helper function that performs soft canonicalization.
+///
+/// This optimized version finds the existing/non-existing boundary and uses std::fs::canonicalize
+/// only on the existing portion for maximum efficiency while maintaining security and symlink handling.
+fn soft_canonicalize_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> io::Result<PathBuf> {
+    // Handle empty path like std::fs::canonicalize - should fail
+    if path.as_os_str().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "The system cannot find the path specified.",
+        ));
+    }
+
+    // Special handling for broken symlinks
+    if path.is_symlink() {
+        // Check for symlink cycle first
+        if visited.contains(path) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Too many levels of symbolic links",
+            ));
+        }
+
+        // Check if we can canonicalize it (i.e., if the target exists)
+        match fs::canonicalize(path) {
+            Ok(canonical) => return Ok(canonical),
+            Err(_) => {
+                // It's a broken symlink - resolve it manually
+                let target = fs::read_link(path)?;
+                let resolved_target = if target.is_absolute() {
+                    target
+                } else {
+                    path.parent().unwrap_or(Path::new("/")).join(target)
+                };
+
+                // Add this symlink to visited set before recursing
+                visited.insert(path.to_path_buf());
+
+                // Recursively canonicalize the target (which may not exist)
+                let result = soft_canonicalize_internal(&resolved_target, visited);
+
+                // Remove from visited set after recursion
+                visited.remove(path);
+
+                return result;
+            }
+        }
+    }
+
+    // Find the boundary between existing and non-existing components
+    let (existing_prefix, non_existing_suffix) =
+        find_existing_boundary_with_symlinks(path, visited)?;
+
+    // Canonicalize the existing prefix (this handles all symlinks in the existing portion)
+    let canonical_prefix = if existing_prefix.as_os_str().is_empty()
+        || existing_prefix == Path::new("/")
+        || existing_prefix.parent().is_none()
+    {
+        // Handle root paths - they're already canonical
+        existing_prefix
+    } else {
+        // Use std::fs::canonicalize for existing paths - this is secure and handles all symlinks
+        fs::canonicalize(&existing_prefix)?
+    };
+
+    // Append the non-existing components lexically (no symlinks possible in non-existing paths)
+    let mut result = canonical_prefix;
+    for component in non_existing_suffix {
+        result.push(component);
     }
 
     Ok(result)
