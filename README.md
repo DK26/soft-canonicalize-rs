@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.1.1"
+soft-canonicalize = "0.1.2"
 ```
 
 ### Basic Usage
@@ -35,13 +35,12 @@ soft-canonicalize = "0.1.1"
 ```rust
 use soft_canonicalize::soft_canonicalize;
 
-// Works with existing and non-existing paths
-let path = soft_canonicalize("some/path/../other/file.txt")?;
+// Works even if file doesn't exist!
+let user_path = soft_canonicalize("../../../etc/passwd")?;
 
-// Security validation example
-let user_path = soft_canonicalize(user_input)?;
-let jail_path = std::fs::canonicalize("/safe/jail/dir")?; // Must exist
-let is_safe = user_path.starts_with(&jail_path);
+let jail_path = std::fs::canonicalize("/safe/jail/dir").expect("Jail directory must exist");
+
+let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
 ```
 
 ## Use Cases
