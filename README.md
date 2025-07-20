@@ -9,7 +9,7 @@ A pure Rust library for path canonicalization that works with non-existing paths
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. Useful for security validation, path preprocessing, and working with paths before file creation.
 
-**Passes all original std library canonicalize tests plus additional compatibility tests.**
+**Comprehensive test suite with 51 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
 Inspired by Python's `pathlib.Path.resolve()` behavior.
 
@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.1.0"
+soft-canonicalize = "0.1.1"
 ```
 
 ### Basic Usage
@@ -38,12 +38,10 @@ use soft_canonicalize::soft_canonicalize;
 // Works with existing and non-existing paths
 let path = soft_canonicalize("some/path/../other/file.txt")?;
 
-// Security validation
-fn is_safe_path(user_path: &str, jail: &Path) -> std::io::Result<bool> {
-    let canonical_user = soft_canonicalize(user_path)?;
-    let canonical_jail = std::fs::canonicalize(jail)?;
-    Ok(canonical_user.starts_with(canonical_jail))
-}
+// Security validation example
+let user_path = soft_canonicalize(user_input)?;
+let jail_path = std::fs::canonicalize("/safe/jail/dir")?; // Must exist
+let is_safe = user_path.starts_with(&jail_path);
 ```
 
 ## Use Cases
@@ -55,15 +53,19 @@ fn is_safe_path(user_path: &str, jail: &Path) -> std::io::Result<bool> {
 ## How It Works
 
 1. **Lexical Resolution**: Process `..` and `.` components without filesystem access
-2. **Incremental Symlink Resolution**: Resolve symlinks as encountered
-3. **Optimized Access**: Only check filesystem when components exist
+2. **Incremental Symlink Resolution**: Resolve symlinks as encountered using `std::fs::canonicalize`
+3. **Hybrid Approach**: Uses `std::fs::canonicalize` for existing path portions, lexical resolution for non-existing parts
+4. **Optimized Access**: Only check filesystem when components exist
+
+**Implementation**: Finds the longest existing path prefix, canonicalizes it with `std::fs::canonicalize`, then appends the remaining non-existing components. This ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths.
 
 ## Performance & Compatibility
 
 - **Time**: O(n) path components
 - **Space**: O(n) component storage  
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Testing**: 100% behavioral compatibility with `std::fs::canonicalize` for existing paths
+- **Comprehensive Testing**: 51 tests including Python-inspired edge cases and cross-platform validation
+- **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ## Security
 
