@@ -1,6 +1,10 @@
 #[cfg(test)]
 mod test_python_inspired {
     use crate::soft_canonicalize;
+    use std::sync::Mutex;
+
+    // Global mutex to serialize tests that change working directory
+    static WORKING_DIR_MUTEX: Mutex<()> = Mutex::new(());
     use std::{env, fs};
     use tempfile::TempDir;
 
@@ -8,6 +12,9 @@ mod test_python_inspired {
     /// Tests non-existing relative paths resolve correctly
     #[test]
     fn test_resolve_nonexist_relative() {
+        // Serialize tests that change working directory
+        let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path();
 
@@ -300,6 +307,9 @@ mod test_python_inspired {
     /// Tests resolution from different working directories
     #[test]
     fn test_resolve_from_different_cwd() {
+        // Serialize tests that change working directory
+        let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path();
 
@@ -348,6 +358,9 @@ mod test_python_inspired {
     /// Tests edge cases with empty components and minimal paths
     #[test]
     fn test_resolve_minimal_paths() {
+        // Serialize tests that change working directory
+        let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
         use std::env;
         use tempfile::TempDir;
 

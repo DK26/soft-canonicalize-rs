@@ -2,6 +2,10 @@
 mod test_python_lessons {
     use crate::soft_canonicalize;
     use std::fs;
+    use std::sync::Mutex;
+
+    // Global mutex to serialize tests that change working directory
+    static WORKING_DIR_MUTEX: Mutex<()> = Mutex::new(());
 
     /// Demonstrates that we ARE Python's resolve(strict=False) equivalent
     /// This validates our value proposition - we provide the missing functionality
@@ -48,6 +52,9 @@ mod test_python_lessons {
     /// Tests Python-inspired path normalization improvements we could add
     #[test]
     fn test_path_normalization_edge_cases() {
+        // Serialize tests that change working directory
+        let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
         use std::env;
         use tempfile::TempDir;
 
