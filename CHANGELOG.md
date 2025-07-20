@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ## [0.1.2] - 2025-07-20
 
 ### Improved
@@ -14,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Code Examples**: Added proper spacing in code examples for better visual separation of logical steps
 - **Security Examples**: Improved security validation example with clearer `.expect()` usage patterns
 
+=======
+>>>>>>> origin/main
 ## [0.1.1] - 2025-07-20
 
 ### Added

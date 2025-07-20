@@ -1,6 +1,10 @@
 [package]
 name = "soft-canonicalize"
+<<<<<<< HEAD
 version = "0.1.2"
+=======
+version = "0.1.1"
+>>>>>>> origin/main
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Pure path canonicalization that works with non-existing paths"
