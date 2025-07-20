@@ -13,15 +13,27 @@ mod test_python_inspired {
 
         // Test relative non-existing path from a real directory
         let original_cwd = env::current_dir().unwrap();
-        env::set_current_dir(base_path).unwrap();
 
-        let result = soft_canonicalize("non/exist/path.txt");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
-        assert!(resolved.ends_with("non/exist/path.txt"));
+        let test_result = std::panic::catch_unwind(|| {
+            // Only change directory if it exists and is accessible
+            if base_path.exists() {
+                env::set_current_dir(base_path).unwrap();
+            }
 
-        env::set_current_dir(original_cwd).unwrap();
+            let result = soft_canonicalize("non/exist/path.txt");
+            assert!(result.is_ok());
+            let resolved = result.unwrap();
+            assert!(resolved.is_absolute());
+            assert!(resolved.ends_with("non/exist/path.txt"));
+        });
+
+        // Always try to restore the original directory
+        let _ = env::set_current_dir(original_cwd);
+
+        // Re-raise any panic that occurred during the test
+        if let Err(e) = test_result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     /// Test inspired by Python's test_resolve_common with strict=False
@@ -91,7 +103,14 @@ mod test_python_inspired {
 
         // Should resolve to base_path/some/nonexisting/path.txt
         let expected_suffix = base_path.join("some/nonexisting/path.txt");
-        assert_eq!(resolved, expected_suffix);
+
+        // Handle macOS /private prefix for /tmp and /var paths
+        let resolved_str = resolved.to_string_lossy();
+        let expected_str = expected_suffix.to_string_lossy();
+        assert!(
+            resolved_str == expected_str || resolved_str == format!("/private{expected_str}"),
+            "Mismatch:\n  left:  {resolved_str}\n right: {expected_str} or /private{expected_str}"
+        );
     }
 
     /// Test inspired by Python's resolve with parent directory traversal
@@ -295,7 +314,9 @@ mod test_python_inspired {
         // Wrap in a closure to ensure proper cleanup
         let test_result = std::panic::catch_unwind(|| {
             // Test relative resolution from sub_dir1
-            env::set_current_dir(&sub_dir1).unwrap();
+            if sub_dir1.exists() {
+                env::set_current_dir(&sub_dir1).unwrap();
+            }
             let result1 = soft_canonicalize("../sub2/non_existing.txt");
             assert!(result1.is_ok());
             let resolved1 = result1.unwrap();
@@ -304,7 +325,9 @@ mod test_python_inspired {
             assert!(resolved1.to_string_lossy().contains("non_existing.txt"));
 
             // Test relative resolution from sub_dir2
-            env::set_current_dir(&sub_dir2).unwrap();
+            if sub_dir2.exists() {
+                env::set_current_dir(&sub_dir2).unwrap();
+            }
             let result2 = soft_canonicalize("../sub1/non_existing.txt");
             assert!(result2.is_ok());
             let resolved2 = result2.unwrap();
@@ -325,24 +348,47 @@ mod test_python_inspired {
     /// Tests edge cases with empty components and minimal paths
     #[test]
     fn test_resolve_minimal_paths() {
-        // Test current directory
-        let result = soft_canonicalize(".");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
+        use std::env;
+        use tempfile::TempDir;
 
-        // Test parent directory
-        let result = soft_canonicalize("..");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
+        let temp_dir = TempDir::new().unwrap();
+        let original_cwd = env::current_dir().unwrap();
 
-        // Test single file name
-        let result = soft_canonicalize("single_file.txt");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
-        assert!(resolved.to_string_lossy().contains("single_file.txt"));
+        // Use a closure with proper cleanup to ensure we always restore the directory
+        let test_result = std::panic::catch_unwind(|| {
+            // Only change directory if it exists and is accessible
+            if temp_dir.path().exists() {
+                env::set_current_dir(temp_dir.path()).unwrap();
+            }
+
+            // Test current directory
+            let result = soft_canonicalize(".");
+            assert!(result.is_ok());
+            let resolved = result.unwrap();
+            assert!(resolved.is_absolute());
+
+            // Test parent directory
+            let result = soft_canonicalize("..");
+            assert!(result.is_ok());
+            let resolved = result.unwrap();
+            assert!(resolved.is_absolute());
+
+            // Test single file name
+            let result = soft_canonicalize("single_file.txt");
+            assert!(result.is_ok());
+            let resolved = result.unwrap();
+            assert!(resolved.is_absolute());
+            assert!(resolved.to_string_lossy().contains("single_file.txt"));
+        });
+
+        // Always try to restore the original directory, but don't panic if it fails
+        // On CI systems, the original directory might become inaccessible
+        let _ = env::set_current_dir(original_cwd);
+
+        // Re-raise any panic that occurred during the test
+        if let Err(e) = test_result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     /// Test to ensure std::fs::canonicalize compatibility for existing paths

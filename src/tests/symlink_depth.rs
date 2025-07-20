@@ -53,6 +53,9 @@ fn test_symlink_depth_documentation() {
 
 #[test]
 fn test_python_style_edge_cases() {
+    use std::env;
+    use tempfile::TempDir;
+
     // Test edge cases inspired by Python's pathlib.Path.resolve() robustness
 
     // Empty path - should fail gracefully
@@ -60,23 +63,42 @@ fn test_python_style_edge_cases() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
 
-    // Single dot - should resolve to current directory
-    let result = soft_canonicalize(".");
-    assert!(result.is_ok());
-    let resolved = result.unwrap();
-    assert!(resolved.is_absolute());
+    // Test in controlled environment for predictable directory operations
+    let temp_dir = TempDir::new().unwrap();
+    let original_cwd = env::current_dir().unwrap();
 
-    // Double dot - should resolve to parent directory
-    let result = soft_canonicalize("..");
-    assert!(result.is_ok());
-    let resolved = result.unwrap();
-    assert!(resolved.is_absolute());
+    let test_result = std::panic::catch_unwind(|| {
+        // Only change directory if it exists and is accessible
+        if temp_dir.path().exists() {
+            env::set_current_dir(temp_dir.path()).unwrap();
+        }
 
-    // Multiple dots and slashes - should normalize
-    let result = soft_canonicalize("./././../.");
-    assert!(result.is_ok());
-    let resolved = result.unwrap();
-    assert!(resolved.is_absolute());
+        // Single dot - should resolve to current directory
+        let result = soft_canonicalize(".");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(resolved.is_absolute());
+
+        // Double dot - should resolve to parent directory
+        let result = soft_canonicalize("..");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(resolved.is_absolute());
+
+        // Multiple dots and slashes - should normalize
+        let result = soft_canonicalize("./././../.");
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(resolved.is_absolute());
+    });
+
+    // Always try to restore the original directory
+    let _ = env::set_current_dir(original_cwd);
+
+    // Re-raise any panic that occurred during the test
+    if let Err(e) = test_result {
+        std::panic::resume_unwind(e);
+    }
 
     // Test with existing temp directory + non-existing suffix (Python-style)
     let tmpdir = TempDir::new().expect("Failed to create temp dir");

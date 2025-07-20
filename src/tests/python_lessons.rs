@@ -48,29 +48,51 @@ mod test_python_lessons {
     /// Tests Python-inspired path normalization improvements we could add
     #[test]
     fn test_path_normalization_edge_cases() {
-        // These are cases where Python's normalization is particularly good
-        let test_cases = vec![
-            ("path/./with/./dots", "current dir dots"),
-            ("dir/../other/file.txt", "sibling traversal"),
-            ("./file.txt", "current dir file"),
-            ("../parent/file.txt", "parent traversal"),
-        ];
+        use std::env;
+        use tempfile::TempDir;
 
-        println!("\nPython-inspired normalization tests:");
-        for (input, description) in test_cases {
-            match soft_canonicalize(input) {
-                Ok(result) => println!(
-                    "✓ {} ('{}') -> path exists: {:?}",
-                    description,
-                    input,
-                    result.exists()
-                ),
-                Err(e) => println!("✗ {description} ('{input}') -> {e}"),
+        let temp_dir = TempDir::new().unwrap();
+        let original_cwd = env::current_dir().unwrap();
+
+        // Use controlled environment for predictable results
+        let test_result = std::panic::catch_unwind(|| {
+            // Only change directory if it exists and is accessible
+            if temp_dir.path().exists() {
+                env::set_current_dir(temp_dir.path()).unwrap();
             }
-        }
 
-        // Our normalization should handle these correctly
-        assert!(soft_canonicalize("path/./with/./dots").is_ok());
-        assert!(soft_canonicalize("dir/../other/file.txt").is_ok());
+            // These are cases where Python's normalization is particularly good
+            let test_cases = vec![
+                ("path/./with/./dots", "current dir dots"),
+                ("dir/../other/file.txt", "sibling traversal"),
+                ("./file.txt", "current dir file"),
+                ("../parent/file.txt", "parent traversal"),
+            ];
+
+            println!("\nPython-inspired normalization tests:");
+            for (input, description) in test_cases {
+                match soft_canonicalize(input) {
+                    Ok(result) => println!(
+                        "✓ {} ('{}') -> path exists: {:?}",
+                        description,
+                        input,
+                        result.exists()
+                    ),
+                    Err(e) => println!("✗ {description} ('{input}') -> {e}"),
+                }
+            }
+
+            // Our normalization should handle these correctly in controlled environment
+            assert!(soft_canonicalize("path/./with/./dots").is_ok());
+            assert!(soft_canonicalize("dir/../other/file.txt").is_ok());
+        });
+
+        // Always try to restore the original directory
+        let _ = env::set_current_dir(original_cwd);
+
+        // Re-raise any panic that occurred during the test
+        if let Err(e) = test_result {
+            std::panic::resume_unwind(e);
+        }
     }
 }
