@@ -9,7 +9,7 @@ A pure Rust library for path canonicalization that works with non-existing paths
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. Useful for security validation, path preprocessing, and working with paths before file creation.
 
-**Comprehensive test suite with 51 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
+**Comprehensive test suite with 53 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
 Inspired by Python's `pathlib.Path.resolve()` behavior.
 
@@ -63,7 +63,7 @@ let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
 - **Time**: O(n) path components
 - **Space**: O(n) component storage  
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 51 tests including Python-inspired edge cases and cross-platform validation
+- **Comprehensive Testing**: 53 tests including Python-inspired edge cases and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ## Security
