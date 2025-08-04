@@ -23,12 +23,16 @@ fn test_existing_path() -> std::io::Result<()> {
 #[test]
 fn test_non_existing_path() -> std::io::Result<()> {
     let temp_dir = tempdir()?;
-    let non_existing = temp_dir.path().join("non_existing_file.txt");
+    let non_existing = temp_dir
+        .path()
+        .join("non_existing_sub_dir/non_existing_file.txt");
 
     let result = soft_canonicalize(&non_existing)?;
-    let expected = fs::canonicalize(temp_dir.path())?.join("non_existing_file.txt");
+    let expected =
+        fs::canonicalize(temp_dir.path())?.join("non_existing_sub_dir/non_existing_file.txt");
 
     assert_eq!(result, expected);
+
     Ok(())
 }
 

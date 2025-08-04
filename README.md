@@ -1,15 +1,15 @@
 # soft-canonicalize
 
 [![Crates.io](https://img.shields.io/crates/v/soft-canonicalize.svg)](https://crates.io/crates/soft-canonicalize)
-[![Documentation](https://docs.rs/soft-canonicalize/badge.svg)](https://docs.rs/soft-canonicalize)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![Build Status](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/DK26/soft-canonicalize-rs/actions)
+[![Documentation](https://docs.rs/soft-canonicalize/badge.svg)](https://docs.rs/soft-canonicalize)
+[![CI](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/DK26/soft-canonicalize-rs/actions)
 
 A pure Rust library for path canonicalization that works with non-existing paths.
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. Useful for security validation, path preprocessing, and working with paths before file creation.
 
-**Comprehensive test suite with 51 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
+**Comprehensive test suite with 59 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
 Inspired by Python's `pathlib.Path.resolve()` behavior.
 
@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.1.2"
+soft-canonicalize = "0.1.3"
 ```
 
 ### Basic Usage
@@ -60,10 +60,10 @@ let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
 
 ## Performance & Compatibility
 
-- **Time**: O(n) path components
+- **Time**: O(k) existing components (best: O(1), worst: O(n))
 - **Space**: O(n) component storage  
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 51 tests including Python-inspired edge cases and cross-platform validation
+- **Comprehensive Testing**: 59 tests including Python-inspired edge cases and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ## Security
@@ -75,18 +75,24 @@ let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
 
 **Security Advantage**: Resolves symlinks, preventing jail break attacks where malicious symlinks point outside intended boundaries (unlike `path_absolutize`).
 
+### Critical Safety Mechanisms
+
+**🔒 Symlink Cycle Detection**: Tracks visited symlinks to prevent infinite recursion and stack overflow attacks. Tested with comprehensive cycle detection tests ensuring robust protection against malicious symlink chains.
+
+**🛡️ Symlinked Directory Jail Break Prevention**: Properly resolves symlinked directories that point outside security boundaries, enabling detection of sophisticated jail escape attempts. Our test suite includes specific scenarios where attackers use symlinked directories (e.g., `jail/uploads/user123 -> /outside/secrets/`) to escape containment when accessing non-existing files through the symlink.
+
 ## Comparison with Alternatives
 
-| Use Case                      | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize::absolutize` | `jailed-path`*      |
+| Use Case                      | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize::absolutize` | `jailed-path`       |
 | ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ----------------------------- | ------------------- |
 | Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                             | ✅                   |
 | Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                             | ✅                   |
 | Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                             | ❌ (uses this crate) |
-| Handles `..` components       | ✅ (resolves)        | ✅ (resolves)            | ✅ (resolves)          | ✅ (resolves)          | ✅ (safe with virtual root)    | ❌ (rejects)         |
+| Handles `..` components       | ✅ (resolves)        | ✅ (resolves)            | ✅ (resolves)          | ✅ (resolves)          | ✅ (resolves/validates)        | ✅ (clamps to jail)  |
 | Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ❌ (vulnerable)                | ✅                   |
-| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ✅ (virtual root)              | ✅                   |
-
-*`jailed-path` uses `soft_canonicalize` as a dependency.
+| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌ (validation only)           | ✅ (enforcement)     |
+| Virtual path display          | ❌                   | ❌                       | ❌                     | ❌                     | ✅                             | ✅                   |
+| Type-safe jail markers        | ❌                   | ❌                       | ❌                     | ❌                     | ❌                             | ✅                   |
 
 ## Contributing
 
