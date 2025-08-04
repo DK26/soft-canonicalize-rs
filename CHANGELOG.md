@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Code Examples**: Added proper spacing in code examples for better visual separation of logical steps
 - **Security Examples**: Improved security validation example with clearer `.expect()` usage patterns
 
+## [0.1.2] - 2025-07-20
+
+### Improved
+- **Documentation**: Enhanced README.md with better code example formatting and improved readability
+- **Code Examples**: Added proper spacing in code examples for better visual separation of logical steps
+- **Security Examples**: Improved security validation example with clearer `.expect()` usage patterns
+
 ## [0.1.1] - 2025-07-20
 
 ### Added
