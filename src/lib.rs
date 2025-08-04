@@ -155,7 +155,7 @@ fn find_existing_boundary_with_symlinks(
 
                         // Append remaining components to the target
                         let mut full_target = resolved_target;
-                        for remaining in &resolved_components[i + 1..] {
+                        for remaining in resolved_components.iter().skip(i + 1) {
                             full_target.push(remaining);
                         }
 
@@ -176,18 +176,19 @@ fn find_existing_boundary_with_symlinks(
                         // Broken symlink - we still need to resolve it lexically
                         // Continue processing as if it doesn't exist, but we'll handle the
                         // symlink target resolution in the calling function
-                        remaining_components = resolved_components[i..].to_vec();
+                        remaining_components =
+                            resolved_components.iter().skip(i).cloned().collect();
                         break;
                     }
                 }
             } else {
                 // Regular file/directory that exists
                 current_path = test_path;
-                remaining_components = resolved_components[i + 1..].to_vec();
+                remaining_components = resolved_components.iter().skip(i + 1).cloned().collect();
             }
         } else {
             // Found the boundary - everything from this component onwards doesn't exist
-            remaining_components = resolved_components[i..].to_vec();
+            remaining_components = resolved_components.iter().skip(i).cloned().collect();
             break;
         }
     }
@@ -239,7 +240,19 @@ fn soft_canonicalize_internal(
                 let resolved_target = if target.is_absolute() {
                     target
                 } else {
-                    path.parent().unwrap_or(Path::new("/")).join(target)
+                    // For relative symlink targets, resolve relative to the symlink's parent directory
+                    let parent = path.parent().unwrap_or_else(|| {
+                        // If no parent, use the root directory as fallback
+                        #[cfg(windows)]
+                        {
+                            Path::new("C:\\")
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            Path::new("/")
+                        }
+                    });
+                    parent.join(target)
                 };
 
                 // Add this symlink to visited set before recursing
@@ -383,9 +396,12 @@ fn soft_canonicalize_internal(
 ///
 /// # Performance
 ///
-/// - **Time Complexity**: O(n) where n is the number of path components
+/// - **Time Complexity**: O(k) where k is the number of existing path components (k ≤ n)
+///   - **Best case**: O(1) when first component doesn't exist
+///   - **Average case**: O(k) where k is typically much smaller than total components
+///   - **Worst case**: O(n) when entire path exists
 /// - **Space Complexity**: O(n) for component storage during processing
-/// - **Filesystem Access**: Minimal - only to find existing ancestors and canonicalize them
+/// - **Filesystem Access**: Minimal - only k filesystem calls plus one canonicalization
 ///
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
@@ -397,6 +413,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 mod tests {
     mod api_compatibility;
     mod basic_functionality;
+    mod edge_case_robustness;
     mod edge_cases;
     mod optimization;
     mod path_traversal;

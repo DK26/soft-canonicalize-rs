@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
+## [0.1.3] - 2025-08-04
+### Added
+- **Security Tests**: Added advanced tests for symlinked directory jail break prevention, including scenarios with new files and nested symlinked directories to ensure robust security boundaries.
+- **Edge Case Robustness Module**: Introduced `edge_case_robustness` test module for improved coverage of rare and complex path resolution scenarios.
+
+### Improved
+- **Performance Documentation**: Clarified time complexity as O(k) where k = existing path components (best: O(1), worst: O(n)), and updated all relevant documentation and README sections for accuracy.
+- **Test Coverage**: Expanded from 51 to 59 tests, including new security and edge case tests, and updated README to reflect the increased coverage.
+- **Comparison Table**: Enhanced README comparison table to clarify handling of `..` components, jail enforcement, and type-safe jail markers for all compared crates.
+- **Security Documentation**: Added explicit documentation of symlink cycle detection and jail break prevention mechanisms in README, with references to new tests.
+
 
 ## [0.1.2] - 2025-07-20
 
@@ -114,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pure Algorithm**: No filesystem modification during canonicalization
 - **Directory Traversal Security**: Logical resolution of `..` components before filesystem access
 - **Symlink Resolution**: Proper handling of symlinks in existing path portions
-- **Performance**: O(n) time complexity with minimal filesystem access
+- **Performance**: O(k) time complexity where k = existing components (k ≤ n), with minimal filesystem access
 - **Cross-Platform**: Handles Windows drive letters, UNC paths, and Unix absolute paths
 - **Zero-Cost**: Minimal memory overhead with efficient path processing
 
