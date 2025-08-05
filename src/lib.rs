@@ -63,6 +63,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::{fs, io};
 
 /// Maximum number of symlinks to follow before giving up.
@@ -79,7 +80,7 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 /// This version properly handles symlinks by processing components incrementally.
 fn find_existing_boundary_with_symlinks(
     path: &Path,
-    visited: &mut HashSet<PathBuf>,
+    visited: &mut HashSet<Rc<PathBuf>>,
     symlink_depth: usize,
 ) -> io::Result<(PathBuf, Vec<std::ffi::OsString>)> {
     // Check symlink depth limit to match std::fs::canonicalize behavior
@@ -133,8 +134,9 @@ fn find_existing_boundary_with_symlinks(
         if test_path.exists() {
             // Check if this is a symlink
             if test_path.is_symlink() {
+                let test_path_rc = Rc::new(test_path.clone());
                 // Check for symlink cycle
-                if visited.contains(&test_path) {
+                if visited.contains(&test_path_rc) {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
                         "Too many levels of symbolic links",
@@ -144,7 +146,7 @@ fn find_existing_boundary_with_symlinks(
                 match fs::read_link(&test_path) {
                     Ok(target) => {
                         // Add this symlink to visited set
-                        visited.insert(test_path.clone());
+                        visited.insert(test_path_rc.clone());
 
                         // Resolve the target path
                         let resolved_target = if target.is_absolute() {
@@ -168,7 +170,7 @@ fn find_existing_boundary_with_symlinks(
                             )?;
 
                         // Remove from visited set
-                        visited.remove(&test_path);
+                        visited.remove(&test_path_rc);
 
                         return Ok((symlink_prefix, symlink_suffix));
                     }
@@ -202,7 +204,7 @@ fn find_existing_boundary_with_symlinks(
 /// only on the existing portion for maximum efficiency while maintaining security and symlink handling.
 fn soft_canonicalize_internal(
     path: &Path,
-    visited: &mut HashSet<PathBuf>,
+    visited: &mut HashSet<Rc<PathBuf>>,
     symlink_depth: usize,
 ) -> io::Result<PathBuf> {
     // Check symlink depth limit to match std::fs::canonicalize behavior
@@ -221,10 +223,34 @@ fn soft_canonicalize_internal(
         ));
     }
 
+    // Explicitly check for null bytes in the path
+    // Use direct byte inspection to avoid string allocation and ensure accuracy
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        if path.as_os_str().as_bytes().contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains null byte",
+            ));
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        if path.as_os_str().encode_wide().any(|c| c == 0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains null byte",
+            ));
+        }
+    }
+
     // Special handling for broken symlinks
     if path.is_symlink() {
+        let path_rc = Rc::new(path.to_path_buf());
         // Check for symlink cycle first
-        if visited.contains(path) {
+        if visited.contains(&path_rc) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Too many levels of symbolic links",
@@ -256,14 +282,14 @@ fn soft_canonicalize_internal(
                 };
 
                 // Add this symlink to visited set before recursing
-                visited.insert(path.to_path_buf());
+                visited.insert(path_rc.clone());
 
                 // Recursively canonicalize the target (which may not exist)
                 let result =
                     soft_canonicalize_internal(&resolved_target, visited, symlink_depth + 1);
 
                 // Remove from visited set after recursion
-                visited.remove(path);
+                visited.remove(&path_rc);
 
                 return result;
             }
@@ -413,6 +439,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 mod tests {
     mod api_compatibility;
     mod basic_functionality;
+    mod cve_tests;
     mod edge_case_robustness;
     mod edge_cases;
     mod optimization;
@@ -421,6 +448,7 @@ mod tests {
     mod python_inspired_tests;
     mod python_lessons;
     mod security;
+    mod security_hardening;
     mod std_behavior;
     mod symlink_depth;
 }
