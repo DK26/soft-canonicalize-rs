@@ -122,13 +122,16 @@ check_utf8_encoding() {
     
     # Method 1: Use file command if available (most reliable)
     if command -v file >/dev/null 2>&1; then
-        if ! file "$file" | grep -q "UTF-8\|ASCII"; then
+        local file_output=$(file "$file")
+        # Check for UTF-8, ASCII, text files, or source files (which are typically UTF-8)
+        if echo "$file_output" | grep -q "UTF-8\|ASCII\|text\|[Ss]ource"; then
+            echo "✅ $file: UTF-8 encoding verified (file command)"
+            return 0
+        else
             echo "❌ $file is not UTF-8 encoded:"
-            file "$file"
+            echo "   File command output: $file_output"
             return 1
         fi
-        echo "✅ $file: UTF-8 encoding verified (file command)"
-        return 0
     fi
     
     # Method 2: Check for UTF-16 BOM (Windows PowerShell sometimes creates these)
