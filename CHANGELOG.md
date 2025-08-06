@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- **Fast-path optimization**: Added fast-path for absolute existing paths without dot components using `std::fs::canonicalize` directly
+- **CVE Testing**: Added `src/tests/cve_tests.rs` module with CVE-2022-21658 race condition tests
+- **Security Hardening**: Added `src/tests/security_hardening.rs` module with comprehensive security tests including null byte injection, Unicode normalization bypasses, double-encoding attacks, case sensitivity bypasses, and TOCTOU prevention
+- **Symlink Resolution Order**: Added `symlink_dotdot_resolution_order` test module validating lexical dot-dot resolution behavior
+- **Null Byte Handling**: Added explicit null byte detection for Unix and Windows platforms
+
+### Improved  
+- **Symlink Cycle Detection**: Changed from `HashSet<PathBuf>` to `HashSet<Rc<PathBuf>>` for visited symlink tracking
+- **Test Coverage**: Added new test modules (`cve_tests`, `security_hardening`, `symlink_dotdot_resolution_order`) 
+- **Documentation**: Updated crate-level documentation with emojis, better security examples, and comparative performance information
+- **Error Handling**: Enhanced null byte error consistency with `std::fs::canonicalize`
+
+### Technical
+- **Fast-path Implementation**: Added condition checking for `path.is_absolute() && path.exists() && !path.components().any(|c| matches!(c, CurDir | ParentDir))`
+- **Memory Optimization**: Use `Rc<PathBuf>` for symlink cycle detection to reduce memory allocations
+- **Cross-platform**: Added platform-specific null byte detection using `OsStrExt` traits
+
 
 ## [0.1.3] - 2025-08-04
 ### Added

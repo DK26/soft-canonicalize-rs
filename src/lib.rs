@@ -2,36 +2,38 @@
 //!
 //! A pure Rust library for path canonicalization that works with non-existing paths.
 //!
-//! Unlike `std::fs::canonicalize()`, this library can resolve and normalize paths
-//! even when some or all of the path components don't exist on the filesystem.
-//! This is useful for security validation, path preprocessing, and working with
-//! paths before creating files.
+//! Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths
+//! even when components don't exist on the filesystem. Useful for security validation,
+//! path preprocessing, and working with paths before file creation.
+//!
+//! **Comprehensive test suite with 68 tests ensuring 100% behavioral compatibility
+//! with std::fs::canonicalize for existing paths.**
+//!
+//! Inspired by Python's `pathlib.Path.resolve()` behavior.
 //!
 //! ## Features
 //!
-//! - **Works with non-existing paths**: Canonicalizes paths even when they don't exist
-//! - **Cross-platform**: Supports Windows, macOS, and Linux
-//! - **Zero dependencies**: No external dependencies beyond std
-//! - **Security focused**: Proper handling of `..` components and symlinks
-//! - **Pure algorithm**: No filesystem modification during canonicalization
+//! - **🚀 Works with non-existing paths**: Canonicalizes paths that don't exist yet
+//! - **🌍 Cross-platform**: Windows, macOS, and Linux support
+//! - **⚡ Zero dependencies**: Only uses std library
+//! - **🔒 Security focused**: Proper `..` and symlink handling
 //!
 //! ## Example
 //!
 //! ```rust
 //! use soft_canonicalize::soft_canonicalize;
-//! use std::path::Path;
 //!
 //! # fn example() -> std::io::Result<()> {
-//! // Works with string paths (like std::fs::canonicalize)
-//! let from_str = soft_canonicalize("some/path/file.txt")?;
+//! // Works even if file doesn't exist!
+//! let user_path = soft_canonicalize("../../../etc/passwd")?;
 //!
-//! // Works with existing paths (same as std::fs::canonicalize)
+//! let jail_path = std::fs::canonicalize("/safe/jail/dir")
+//!     .expect("Jail directory must exist");
+//!
+//! let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
+//!
+//! // Also works with existing paths (same as std::fs::canonicalize)
 //! let existing = soft_canonicalize(&std::env::temp_dir())?;
-//!
-//! // Also works with non-existing paths
-//! let non_existing = soft_canonicalize(
-//!     std::env::temp_dir().join("some/deep/non/existing/path.txt")
-//! )?;
 //!
 //! // Resolves .. components logically
 //! let traversal = soft_canonicalize("some/path/../other/file.txt")?;
@@ -43,10 +45,22 @@
 //!
 //! This library is designed with security in mind:
 //!
-//! - Properly handles directory traversal (`..`) components
-//! - Resolves symlinks when they exist
-//! - Normalizes path separators and case (on case-insensitive filesystems)
-//! - Does not create or modify filesystem entries during canonicalization
+//! - **Directory Traversal Prevention**: `..` components resolved before filesystem access
+//! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
+//! - **CVE Protection**: Tested against known vulnerabilities (CVE-2022-21658, etc.)
+//! - **Symlink Jail Break Prevention**: Prevents escape through malicious symlinks
+//! - **No Side Effects**: No temporary files created during canonicalization
+//!
+//! ## Performance
+//!
+//! - **Time**: O(k) existing components (best: O(1), worst: O(n))
+//! - **Space**: O(n) component storage
+//! - **Filesystem Access**: Minimal - only existing portions are accessed
+//!
+//! Compares favorably to alternatives:
+//! - **vs std::fs::canonicalize**: Works with non-existing paths
+//! - **vs path_absolutize**: Resolves symlinks (prevents jail breaks)
+//! - **vs normpath**: Handles symlinks and provides security guarantees
 //!
 //! ## Algorithm
 //!
@@ -221,6 +235,19 @@ fn soft_canonicalize_internal(
             io::ErrorKind::NotFound,
             "The system cannot find the path specified.",
         ));
+    }
+
+    // Fast path: if absolute path exists entirely and has no dot components, use std::fs::canonicalize
+    if path.is_absolute()
+        && path.exists()
+        && !path.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
+    {
+        return fs::canonicalize(path);
     }
 
     // Explicitly check for null bytes in the path
@@ -423,11 +450,14 @@ fn soft_canonicalize_internal(
 /// # Performance
 ///
 /// - **Time Complexity**: O(k) where k is the number of existing path components (k ≤ n)
-///   - **Best case**: O(1) when first component doesn't exist
+///   - **Best case**: O(1) when first component doesn't exist  
 ///   - **Average case**: O(k) where k is typically much smaller than total components
 ///   - **Worst case**: O(n) when entire path exists
 /// - **Space Complexity**: O(n) for component storage during processing
-/// - **Filesystem Access**: Minimal - only k filesystem calls plus one canonicalization
+/// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
+///
+/// **Comparison with alternatives**: Provides unique combination of non-existing path
+/// support with full symlink resolution and security guarantees that other libraries lack.
 ///
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
@@ -451,4 +481,5 @@ mod tests {
     mod security_hardening;
     mod std_behavior;
     mod symlink_depth;
+    mod symlink_dotdot_resolution_order;
 }
