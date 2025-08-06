@@ -6,7 +6,7 @@
 //! even when components don't exist on the filesystem. Useful for security validation,
 //! path preprocessing, and working with paths before file creation.
 //!
-//! **Comprehensive test suite with 68 tests ensuring 100% behavioral compatibility
+//! **Comprehensive test suite with 71 tests ensuring 100% behavioral compatibility
 //! with std::fs::canonicalize for existing paths.**
 //!
 //! Inspired by Python's `pathlib.Path.resolve()` behavior.
@@ -49,7 +49,6 @@
 //! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
 //! - **CVE Protection**: Tested against known vulnerabilities (CVE-2022-21658, etc.)
 //! - **Symlink Jail Break Prevention**: Prevents escape through malicious symlinks
-//! - **No Side Effects**: No temporary files created during canonicalization
 //!
 //! ## Performance
 //!
@@ -373,7 +372,6 @@ fn soft_canonicalize_internal(
 ///
 /// - **Directory Traversal**: `..` components are resolved logically before filesystem access
 /// - **Symlink Resolution**: Existing symlinks are resolved with proper cycle detection
-/// - **No Side Effects**: No temporary files or directories are created during the process
 ///
 /// # Cross-Platform Support
 ///

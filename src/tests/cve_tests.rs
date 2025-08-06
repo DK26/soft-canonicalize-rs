@@ -37,5 +37,7 @@ fn test_cve_2022_21658_race_condition() {
 
     // The result should be the *original* target, not the secret one.
     // soft_canonicalize should have resolved the symlink before it was replaced.
-    assert_eq!(result.unwrap(), real_target);
+    // On macOS, /var is a symlink to /private/var, so we need to canonicalize the expected path too
+    let expected = std::fs::canonicalize(&real_target).unwrap_or(real_target);
+    assert_eq!(result.unwrap(), expected);
 }
