@@ -279,9 +279,9 @@ fn soft_canonicalize_edge_cases() {
 
     #[cfg(windows)]
     {
-        // Test Windows drive root
+        // Test Windows drive root - std::fs::canonicalize returns UNC format
         let c_root = soft_canonicalize(&Path::new("C:\\")).unwrap();
-        assert_eq!(c_root, PathBuf::from("C:\\"));
+        assert_eq!(c_root, PathBuf::from("\\\\?\\C:\\"));
     }
 }
 
