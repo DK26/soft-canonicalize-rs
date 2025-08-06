@@ -18,7 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improved  
 - **Symlink Cycle Detection**: Changed from `HashSet<PathBuf>` to `HashSet<Rc<PathBuf>>` for visited symlink tracking
 - **Test Coverage**: Added new test modules (`cve_tests`, `security_hardening`, `symlink_dotdot_resolution_order`) 
-- **Documentation**: Updated crate-level documentation with emojis, better security examples, and comparative performance information
 - **Error Handling**: Enhanced null byte error consistency with `std::fs::canonicalize`
 
 ### Fixed
@@ -31,7 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-platform**: Added platform-specific null byte detection using `OsStrExt` traits  
 - **Symlink Cycle Detection**: Changed from `HashSet<PathBuf>` to `HashSet<Rc<PathBuf>>` for visited symlink tracking
 - **Test Coverage**: Added new test modules (`cve_tests`, `security_hardening`, `symlink_dotdot_resolution_order`) 
-- **Documentation**: Updated crate-level documentation with emojis, better security examples, and comparative performance information
 - **Error Handling**: Enhanced null byte error consistency with `std::fs::canonicalize`
 
 ### Technical
