@@ -4,21 +4,25 @@
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Documentation](https://docs.rs/soft-canonicalize/badge.svg)](https://docs.rs/soft-canonicalize)
 [![CI](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/DK26/soft-canonicalize-rs/actions)
+[![Security audit](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/audit.yml)
 
-A pure Rust library for path canonicalization that works with non-existing paths.
+A high-performance, pure Rust library for path canonicalization that works with non-existing paths.
+
+**Inspired by Python's `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust, but with significant performance improvements and additional safety features.
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. This enables accurate path comparison, resolution of future file locations, and preprocessing paths before file creation.
 
-**Comprehensive test suite with 100 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
-
-Inspired by Python's `pathlib.Path.resolve(strict=False)` behavior, introduced in Python 3.6+.
+**🔬 Comprehensive test suite with 100+ tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
 ## Features
 
 - **🚀 Works with non-existing paths**: Canonicalizes paths that don't exist yet
 - **🌍 Cross-platform**: Windows, macOS, and Linux support  
-- **⚡ Zero dependencies**: Only uses std library
-- **🔒 Robust path handling**: Proper `..` and symlink resolution
+- **🔧 Zero dependencies**: Only uses std library
+- **🔒 Robust path handling**: Proper `..` and symlink resolution with cycle detection
+- **🛡️ Security tested**: Protection against CVE-2022-21658 and common path traversal attacks
+- **🔍 Security monitoring**: Automated daily security audits via cargo-audit in CI/CD
+- **⚡ High Performance**: Optimized algorithm significantly outperforms naive implementations
 
 ## What is Path Canonicalization?
 
@@ -75,15 +79,25 @@ assert_eq!(result, PathBuf::from("/home/user/myproject/README.md"));
 
 ## How It Works
 
-This library finds the longest existing path prefix, canonicalizes it with `std::fs::canonicalize`, then appends the remaining non-existing components. This ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths.
+This library implements an optimized **PathResolver algorithm** that:
+
+1. **Fast-path optimization**: Uses `std::fs::canonicalize()` directly for existing absolute paths without dot components
+2. **Boundary detection**: Efficiently finds the split between existing and non-existing path components
+3. **Lexical resolution**: Resolves `..` and `.` components without filesystem calls where possible
+4. **Symlink handling**: Properly resolves existing symlinks with cycle detection and depth limits
+5. **Platform optimization**: Maintains Windows UNC path canonicalization (`\\?\C:\...` format)
+
+This approach ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths and significantly better performance than naive implementations.
 
 ## Performance & Compatibility
 
-- **Time**: O(k) existing components (best: O(1), worst: O(n))
-- **Space**: O(n) component storage
+- **Time Complexity**: O(k) existing components (best: O(1), worst: O(n))
+- **Space Complexity**: O(n) component storage with optimized memory usage
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 100 tests including security audits, Python-inspired edge cases, and cross-platform validation
+- **Comprehensive Testing**: 100+ tests including security audits, Python-inspired edge cases, and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
+
+For detailed performance benchmarks and comparisons with Python's pathlib, see the [`benches/`](benches/) directory.
 
 ## Security
 

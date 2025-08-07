@@ -234,6 +234,21 @@ run_check "Tests (includes compilation)" "cargo test --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 run_check "Documentation" "RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --document-private-items --all-features"
 
+# Security audit (same as GitHub Actions)
+echo "🔍 Running security audit..."
+if command -v cargo-audit &> /dev/null; then
+    run_check "Security Audit" "cargo audit"
+else
+    echo "⚠️  cargo-audit not found. Installing..."
+    if cargo install cargo-audit --locked; then
+        echo "✓ cargo-audit installed successfully"
+        run_check "Security Audit" "cargo audit"
+    else
+        echo "❌ Failed to install cargo-audit. Skipping security audit."
+        echo "💡 To install manually: cargo install cargo-audit"
+    fi
+fi
+
 # Check MSRV compatibility (same as GitHub Actions)
 echo "🔍 Checking Minimum Supported Rust Version (1.70.0)..."
 if command -v rustup &> /dev/null; then

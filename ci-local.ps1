@@ -195,6 +195,26 @@ Run-Check "Tests (includes compilation)" "cargo test --verbose"
 $env:RUSTDOCFLAGS = "-D warnings"
 Run-Check "Documentation" "cargo doc --no-deps --document-private-items --all-features"
 
+# Security audit (same as GitHub Actions)
+Write-Host "Running security audit..." -ForegroundColor Cyan
+if (Get-Command cargo-audit -ErrorAction SilentlyContinue) {
+    Run-Check "Security Audit" "cargo audit"
+} else {
+    Write-Host "WARNING: cargo-audit not found. Installing..." -ForegroundColor Yellow
+    try {
+        & cargo install cargo-audit --locked
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "SUCCESS: cargo-audit installed successfully" -ForegroundColor Green
+            Run-Check "Security Audit" "cargo audit"
+        } else {
+            throw "cargo-audit installation failed"
+        }
+    } catch {
+        Write-Host "ERROR: Failed to install cargo-audit. Skipping security audit." -ForegroundColor Red
+        Write-Host "INFO: To install manually: cargo install cargo-audit" -ForegroundColor Yellow
+    }
+}
+
 # Check MSRV compatibility (same as GitHub Actions)
 Write-Host "Checking Minimum Supported Rust Version (1.70.0)..." -ForegroundColor Cyan
 if (Get-Command rustup -ErrorAction SilentlyContinue) {
