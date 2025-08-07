@@ -16,7 +16,7 @@ fn test_relative_path_with_traversal() -> std::io::Result<()> {
 
     // Calculate the expected result: current_dir + "part"
     let current_dir = std::env::current_dir()?;
-    let expected = fs::canonicalize(&current_dir)?.join("part");
+    let expected = fs::canonicalize(current_dir)?.join("part");
 
     // The result should be exactly current_dir/part
     assert_eq!(result, expected);
@@ -39,7 +39,7 @@ fn test_mixed_existing_and_nonexisting_with_traversal() -> std::io::Result<()> {
         .join("..")
         .join("sibling.txt");
 
-    let result = soft_canonicalize(&test_path)?;
+    let result = soft_canonicalize(test_path)?;
     let expected = fs::canonicalize(&existing_dir)?.join("sibling.txt");
 
     assert_eq!(result, expected);
@@ -55,7 +55,7 @@ fn test_traversal_beyond_root() -> std::io::Result<()> {
         .path()
         .join("../../../../../../../../../root_file.txt");
 
-    let result = soft_canonicalize(&test_path)?;
+    let result = soft_canonicalize(test_path)?;
 
     // Should not escape beyond the filesystem root
     assert!(result.is_absolute());

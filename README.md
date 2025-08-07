@@ -7,18 +7,30 @@
 
 A pure Rust library for path canonicalization that works with non-existing paths.
 
-Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. Useful for security validation, path preprocessing, and working with paths before file creation.
+Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. This enables accurate path comparison, resolution of future file locations, and preprocessing paths before file creation.
 
-**Comprehensive test suite with 71 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
+**Comprehensive test suite with 91 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
-Inspired by Python's `pathlib.Path.resolve()` behavior.
+Inspired by Python's `pathlib.Path.resolve(strict=False)` behavior, introduced in Python 3.6+.
 
 ## Features
 
 - **🚀 Works with non-existing paths**: Canonicalizes paths that don't exist yet
-- **🌍 Cross-platform**: Windows, macOS, and Linux support
+- **🌍 Cross-platform**: Windows, macOS, and Linux support  
 - **⚡ Zero dependencies**: Only uses std library
-- **🔒 Security focused**: Proper `..` and symlink handling
+- **🔒 Robust path handling**: Proper `..` and symlink resolution
+
+## What is Path Canonicalization?
+
+Path canonicalization converts paths to their canonical (standard) form, enabling accurate comparison and ensuring two different path representations that point to the same location are recognized as equivalent. This is essential for:
+
+- **Path Comparison**: Determining if two paths refer to the same file or directory
+- **Deduplication**: Avoiding duplicate operations on the same file accessed via different paths  
+- **Build Systems**: Resolving output paths and dependencies accurately
+- **Future Path Planning**: Computing paths for files that will be created later
+- **Security Applications**: Preventing path traversal attacks and ensuring paths stay within intended boundaries
+
+The "soft" aspect means we can canonicalize paths even when the target doesn't exist yet - extending traditional canonicalization to work with planned or future file locations.
 
 ## Quick Start
 
@@ -33,36 +45,44 @@ soft-canonicalize = "0.1.4"
 
 ```rust
 use soft_canonicalize::soft_canonicalize;
+use std::path::PathBuf;
 
-// Works even if file doesn't exist!
-let user_path = soft_canonicalize("../../../etc/passwd")?;
+// Starting from working directory: /home/user/myproject
 
-let jail_path = std::fs::canonicalize("/safe/jail/dir").expect("Jail directory must exist");
+// Input: "data/config.json" (relative path to non-existing file)
+// Output: absolute canonical path (file doesn't need to exist!)
+let result = soft_canonicalize("data/config.json")?;
+assert_eq!(result, PathBuf::from("/home/user/myproject/data/config.json"));
 
-let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
+// Input: "src/../data/settings.toml" (path with .. traversal to non-existing file)  
+// Output: .. resolved logically, no filesystem needed
+let result = soft_canonicalize("src/../data/settings.toml")?;
+assert_eq!(result, PathBuf::from("/home/user/myproject/data/settings.toml"));
+
+// Input: "src/../README.md" (existing file with .. traversal)
+// Output: same as std::fs::canonicalize (resolves symlinks too)
+let result = soft_canonicalize("src/../README.md")?;
+assert_eq!(result, PathBuf::from("/home/user/myproject/README.md"));
 ```
 
 ## Use Cases
 
-- **Web servers**: Path validation before file creation
-- **Build tools**: Resolving non-existing output paths  
-- **Security applications**: Safe path handling with symlink resolution
+- **Path Comparison & Deduplication**: Ensure different path representations are recognized as equivalent
+- **Build Tools**: Resolving non-existing output paths and dependency tracking
+- **File System Planning**: Computing canonical paths for files that will be created
+- **Web Applications**: Normalizing user-provided paths for consistent handling
+- **Security Applications**: Safe path validation with proper symlink resolution
 
 ## How It Works
 
-1. **Lexical Resolution**: Process `..` and `.` components without filesystem access
-2. **Incremental Symlink Resolution**: Resolve symlinks as encountered using `std::fs::canonicalize`
-3. **Hybrid Approach**: Uses `std::fs::canonicalize` for existing path portions, lexical resolution for non-existing parts
-4. **Optimized Access**: Only check filesystem when components exist
-
-**Implementation**: Finds the longest existing path prefix, canonicalizes it with `std::fs::canonicalize`, then appends the remaining non-existing components. This ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths.
+This library finds the longest existing path prefix, canonicalizes it with `std::fs::canonicalize`, then appends the remaining non-existing components. This ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths.
 
 ## Performance & Compatibility
 
 - **Time**: O(k) existing components (best: O(1), worst: O(n))
-- **Space**: O(n) component storage  
+- **Space**: O(n) component storage
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 71 tests including Python-inspired edge cases and cross-platform validation
+- **Comprehensive Testing**: 91 tests including security audits, Python-inspired edge cases, and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ## Security
@@ -71,7 +91,7 @@ let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
 - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
 - **Cross-platform Path Normalization**: Handles Windows drive letters, UNC paths, and Unix absolute paths
 
-**Security Advantage**: Resolves symlinks, preventing jail break attacks where malicious symlinks point outside intended boundaries (unlike `path_absolutize`).
+**Note on Symlink Handling**: Unlike some path normalization libraries, this crate resolves symlinks when they exist, providing stronger guarantees about the final path destination. This behavior matches `std::fs::canonicalize` and can help prevent certain types of path-based security issues in applications that require it.
 
 ### Critical Safety Mechanisms
 
@@ -98,11 +118,11 @@ These tests ensure that `soft_canonicalize` doesn't inherit the security vulnera
 | Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate) |
 | Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate) |
 | Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                 | ❌ (uses this crate)|
-| Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ❌ (vulnerable)    | ✅ (via this crate) |
+| Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate) |
 | Security tested               | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (via this crate) |
 | Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (enforcement)    |
 
-**Choose `soft_canonicalize` when you need**: Core path canonicalization for non-existing files with security guarantees.  
+**Choose `soft_canonicalize` when you need**: Core path canonicalization for non-existing files with full symlink resolution.  
 **Choose `jailed-path` when you need**: Path jailing with type-safe boundaries (builds on `soft_canonicalize`).
 
 ## Contributing

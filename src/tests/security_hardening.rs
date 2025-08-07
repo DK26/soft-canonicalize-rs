@@ -191,7 +191,7 @@ fn test_long_path_component_handling() {
     let long_component = "a".repeat(300);
     let long_path = format!("documents/{long_component}/file.txt");
 
-    let result = soft_canonicalize(&long_path);
+    let result = soft_canonicalize(long_path);
 
     // Should either succeed or fail gracefully with appropriate error
     match result {

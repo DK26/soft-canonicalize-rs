@@ -97,7 +97,7 @@ fn main() -> std::io::Result<()> {
 
     // For comparison, create the full structure and test std::fs::canonicalize
     let hello_world = other_path.join("hello").join("world");
-    if fs::create_dir_all(&hello_world).is_ok() {
+    if fs::create_dir_all(hello_world).is_ok() {
         println!("\nTesting std::fs::canonicalize for comparison...");
         match std::fs::canonicalize(&test_path) {
             Ok(std_result) => {

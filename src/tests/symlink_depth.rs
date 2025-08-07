@@ -104,7 +104,7 @@ fn test_python_style_edge_cases() {
     let tmpdir = TempDir::new().expect("Failed to create temp dir");
     let test_path = tmpdir.path().join("non").join("existing").join("path.txt");
 
-    let result = soft_canonicalize(&test_path);
+    let result = soft_canonicalize(test_path);
     assert!(result.is_ok());
     let resolved = result.unwrap();
 

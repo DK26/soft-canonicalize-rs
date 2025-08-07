@@ -3,63 +3,94 @@
 //! A pure Rust library for path canonicalization that works with non-existing paths.
 //!
 //! Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths
-//! even when components don't exist on the filesystem. Useful for security validation,
-//! path preprocessing, and working with paths before file creation.
+//! even when components don't exist on the filesystem. This enables accurate path
+//! comparison, resolution of future file locations, and preprocessing paths before
+//! file creation.
 //!
-//! **Comprehensive test suite with 71 tests ensuring 100% behavioral compatibility
+//! **Comprehensive test suite with 91 tests ensuring 100% behavioral compatibility
 //! with std::fs::canonicalize for existing paths.**
 //!
-//! Inspired by Python's `pathlib.Path.resolve()` behavior.
+//! Inspired by Python's `pathlib.Path.resolve(strict=False)` behavior, introduced in Python 3.6+.
+//!
+//! ## What is Path Canonicalization?
+//!
+//! Path canonicalization converts paths to their canonical (standard) form, enabling
+//! accurate comparison and ensuring two different path representations that point to
+//! the same location are recognized as equivalent. This is essential for:
+//!
+//! - **Path Comparison**: Determining if two paths refer to the same file or directory
+//! - **Deduplication**: Avoiding duplicate operations on the same file accessed via different paths
+//! - **Build Systems**: Resolving output paths and dependencies accurately
+//! - **Future Path Planning**: Computing paths for files that will be created later
+//! - **Security Applications**: Preventing path traversal attacks and ensuring paths stay within intended boundaries
+//!
+//! The "soft" aspect means we can canonicalize paths even when the target doesn't exist yet -
+//! extending traditional canonicalization to work with planned or future file locations.
 //!
 //! ## Features
 //!
 //! - **🚀 Works with non-existing paths**: Canonicalizes paths that don't exist yet
 //! - **🌍 Cross-platform**: Windows, macOS, and Linux support
 //! - **⚡ Zero dependencies**: Only uses std library
-//! - **🔒 Security focused**: Proper `..` and symlink handling
+//! - **🔒 Robust path handling**: Proper `..` and symlink resolution
 //!
 //! ## Example
 //!
 //! ```rust
 //! use soft_canonicalize::soft_canonicalize;
+//! use std::path::PathBuf;
 //!
 //! # fn example() -> std::io::Result<()> {
-//! // Works even if file doesn't exist!
-//! let user_path = soft_canonicalize("../../../etc/passwd")?;
+//! # std::env::set_current_dir("/home/user/myproject")?;
+//! // Starting from working directory: /home/user/myproject
 //!
-//! let jail_path = std::fs::canonicalize("/safe/jail/dir")
-//!     .expect("Jail directory must exist");
+//! // Input: "data/config.json" (relative path to non-existing file)
+//! // Output: absolute canonical path (file doesn't need to exist!)
+//! let result = soft_canonicalize("data/config.json")?;
+//! assert_eq!(result, PathBuf::from("/home/user/myproject/data/config.json"));
 //!
-//! let is_safe = user_path.starts_with(&jail_path); // false - attack blocked!
+//! // Input: "src/../data/settings.toml" (path with .. traversal to non-existing file)  
+//! // Output: .. resolved logically, no filesystem needed
+//! let result = soft_canonicalize("src/../data/settings.toml")?;
+//! assert_eq!(result, PathBuf::from("/home/user/myproject/data/settings.toml"));
 //!
-//! // Also works with existing paths (same as std::fs::canonicalize)
-//! let existing = soft_canonicalize(&std::env::temp_dir())?;
-//!
-//! // Resolves .. components logically
-//! let traversal = soft_canonicalize("some/path/../other/file.txt")?;
+//! // Input: "src/../README.md" (existing file with .. traversal)
+//! // Output: same as std::fs::canonicalize (resolves symlinks too)
+//! # std::fs::create_dir_all("src")?;
+//! # std::fs::File::create("README.md")?;
+//! let result = soft_canonicalize("src/../README.md")?;
+//! assert_eq!(result, PathBuf::from("/home/user/myproject/README.md"));
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! ## Security
 //!
-//! This library is designed with security in mind:
+//! This library provides robust path handling features:
 //!
 //! - **Directory Traversal Prevention**: `..` components resolved before filesystem access
 //! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
+//! - **Comprehensive Security Testing**: 23 dedicated security tests covering CVE protection, attack simulation, and vulnerability discovery
+//! - **Cross-platform Normalization**: Handles platform-specific path quirks consistently
+//!
+//! ### Security Test Coverage
+//!
+//! - **White-box Security Audits**: 14 tests exploiting internal algorithm knowledge
+//! - **Black-box Attack Simulation**: 9 tests treating the API as a black box
 //! - **CVE Protection**: Tested against known vulnerabilities (CVE-2022-21658, etc.)
-//! - **Symlink Jail Break Prevention**: Prevents escape through malicious symlinks
+//! - **Attack Vectors**: Directory traversal, symlink escapes, race conditions, Unicode bypasses
+//!
+//! Note: While this library can be used in security-critical applications, its primary
+//! purpose is accurate path canonicalization and comparison. Security applications should
+//! combine this with appropriate access controls and validation.
 //!
 //! ## Performance
 //!
 //! - **Time**: O(k) existing components (best: O(1), worst: O(n))
 //! - **Space**: O(n) component storage
 //! - **Filesystem Access**: Minimal - only existing portions are accessed
-//!
-//! Compares favorably to alternatives:
-//! - **vs std::fs::canonicalize**: Works with non-existing paths
-//! - **vs path_absolutize**: Resolves symlinks (prevents jail breaks)
-//! - **vs normpath**: Handles symlinks and provides security guarantees
+//! - **Comprehensive Testing**: 91 tests including security audits, Python-inspired edge cases and cross-platform validation
+//! - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 //!
 //! ## Algorithm
 //!
@@ -71,7 +102,7 @@
 //! 4. Canonicalizing the existing portion using `std::fs::canonicalize`
 //! 5. Appending the non-existing components to the canonicalized base
 //!
-//! This approach provides the security benefits of full canonicalization while
+//! This approach provides the robustness benefits of full canonicalization while
 //! supporting paths that don't exist yet.
 
 use std::collections::HashSet;
@@ -354,7 +385,7 @@ fn soft_canonicalize_internal(
 /// 2. Canonicalizing that existing part (resolving symlinks, normalizing case, etc.)
 /// 3. Appending the non-existing path components to the canonicalized base
 ///
-/// This provides the security benefits of canonicalization (symlink resolution,
+/// This provides the robustness benefits of canonicalization (symlink resolution,
 /// path normalization) without requiring the entire path to exist.
 ///
 /// # Algorithm Details
@@ -372,6 +403,9 @@ fn soft_canonicalize_internal(
 ///
 /// - **Directory Traversal**: `..` components are resolved logically before filesystem access
 /// - **Symlink Resolution**: Existing symlinks are resolved with proper cycle detection
+///
+/// Note: While this function provides robust path handling, security-critical applications
+/// should combine it with appropriate access controls and validation.
 ///
 /// # Cross-Platform Support
 ///
@@ -455,7 +489,8 @@ fn soft_canonicalize_internal(
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
 ///
 /// **Comparison with alternatives**: Provides unique combination of non-existing path
-/// support with full symlink resolution and security guarantees that other libraries lack.
+/// support with full symlink resolution and robust path handling that other libraries
+/// may not offer.
 ///
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
@@ -476,6 +511,7 @@ mod tests {
     mod python_inspired_tests;
     mod python_lessons;
     mod security;
+    mod security_audit;
     mod security_hardening;
     mod std_behavior;
     mod symlink_depth;

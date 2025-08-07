@@ -41,7 +41,7 @@ fn test_symlink_jail_break_prevention() -> std::io::Result<()> {
         // Verify that a security check would catch this
         let canonical_jail = fs::canonicalize(&jail)?;
         assert!(
-            !result.starts_with(&canonical_jail),
+            !result.starts_with(canonical_jail),
             "Symlink should resolve to location outside jail, enabling detection"
         );
     }
@@ -98,7 +98,7 @@ fn test_symlinked_directory_jail_break_with_new_file() -> std::io::Result<()> {
 
         // The result should point to the dangerous location outside jail
         let expected = outside_dangerous.join("new_upload.txt");
-        let canonical_expected = soft_canonicalize(&expected)?;
+        let canonical_expected = soft_canonicalize(expected)?;
         assert_eq!(result, canonical_expected);
 
         // Verify security check would catch this jail break attempt
@@ -157,7 +157,7 @@ fn test_nested_symlinked_directory_attack() -> std::io::Result<()> {
     if symlink_result.is_ok() {
         // Attack: try to upload a new file that would end up in secret location
         let attack_path = user_dir.join("my_innocent_file.txt");
-        let result = match soft_canonicalize(&attack_path) {
+        let result = match soft_canonicalize(attack_path) {
             Ok(path) => path,
             Err(e)
                 if e.kind() == std::io::ErrorKind::InvalidInput
@@ -171,7 +171,7 @@ fn test_nested_symlinked_directory_attack() -> std::io::Result<()> {
 
         // Should resolve to secret location
         let expected_dangerous_path = secret_docs.join("my_innocent_file.txt");
-        let canonical_expected = soft_canonicalize(&expected_dangerous_path)?;
+        let canonical_expected = soft_canonicalize(expected_dangerous_path)?;
         assert_eq!(result, canonical_expected);
 
         // Security validation should catch this
@@ -180,7 +180,7 @@ fn test_nested_symlinked_directory_attack() -> std::io::Result<()> {
 
         // Also test accessing existing file through symlink
         let existing_attack = user_dir.join("classified.txt");
-        let existing_result = match soft_canonicalize(&existing_attack) {
+        let existing_result = match soft_canonicalize(existing_attack) {
             Ok(path) => path,
             Err(e)
                 if e.kind() == std::io::ErrorKind::InvalidInput

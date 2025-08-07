@@ -21,11 +21,11 @@ fn test_boundary_detection() -> std::io::Result<()> {
 
     // Test exact boundary detection
     let path_at_boundary = level3.join("file.txt");
-    let result = soft_canonicalize(&path_at_boundary)?;
+    let result = soft_canonicalize(path_at_boundary)?;
 
     // Result should have canonical prefix up to level2, lexical suffix from level3
     let canonical_prefix = soft_canonicalize(&level2)?;
-    assert!(result.starts_with(&canonical_prefix));
+    assert!(result.starts_with(canonical_prefix));
 
     Ok(())
 }
@@ -83,7 +83,7 @@ fn test_performance_characteristics() -> std::io::Result<()> {
         .join("file.txt");
 
     let start = std::time::Instant::now();
-    let _result = soft_canonicalize(&very_deep_path)?;
+    let _result = soft_canonicalize(very_deep_path)?;
     let elapsed = start.elapsed();
 
     // Very generous limit - just ensure we don't hang or take extremely long

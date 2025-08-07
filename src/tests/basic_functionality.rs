@@ -27,7 +27,7 @@ fn test_non_existing_path() -> std::io::Result<()> {
         .path()
         .join("non_existing_sub_dir/non_existing_file.txt");
 
-    let result = soft_canonicalize(&non_existing)?;
+    let result = soft_canonicalize(non_existing)?;
     let expected =
         fs::canonicalize(temp_dir.path())?.join("non_existing_sub_dir/non_existing_file.txt");
 
@@ -42,7 +42,7 @@ fn test_relative_path() -> std::io::Result<()> {
 
     // Calculate the expected result: current_dir + "non/existing/relative/path.txt"
     let current_dir = std::env::current_dir()?;
-    let expected = fs::canonicalize(&current_dir)?
+    let expected = fs::canonicalize(current_dir)?
         .join("non")
         .join("existing")
         .join("relative")

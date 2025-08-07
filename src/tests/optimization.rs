@@ -26,7 +26,7 @@ fn test_hybrid_optimization_compatibility() -> std::io::Result<()> {
 
     // Test non-existing path (would use lexical approach in hybrid)
     let non_existing_path = base.join("non_existing/file.txt");
-    let result = soft_canonicalize(&non_existing_path)?;
+    let result = soft_canonicalize(non_existing_path)?;
     assert!(result.is_absolute());
     assert!(result.to_string_lossy().contains("non_existing"));
 
