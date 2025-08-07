@@ -9,7 +9,7 @@ A pure Rust library for path canonicalization that works with non-existing paths
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. This enables accurate path comparison, resolution of future file locations, and preprocessing paths before file creation.
 
-**Comprehensive test suite with 91 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
+**Comprehensive test suite with 100 tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
 
 Inspired by Python's `pathlib.Path.resolve(strict=False)` behavior, introduced in Python 3.6+.
 
@@ -82,7 +82,7 @@ This library finds the longest existing path prefix, canonicalizes it with `std:
 - **Time**: O(k) existing components (best: O(1), worst: O(n))
 - **Space**: O(n) component storage
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 91 tests including security audits, Python-inspired edge cases, and cross-platform validation
+- **Comprehensive Testing**: 100 tests including security audits, Python-inspired edge cases, and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ## Security
@@ -108,6 +108,8 @@ Our comprehensive security test suite specifically validates protection against 
 - **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)
 - **Case Sensitivity Bypasses**: Tests on case-insensitive filesystems to prevent case-based security bypasses
 - **Symlink Jail Escapes**: Comprehensive testing of symlinked directory attacks and nested symlink chains
+- **NTFS Alternate Data Streams**: Windows-specific tests for ADS attack vectors that can hide malicious content
+- **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
 
 These tests ensure that `soft_canonicalize` doesn't inherit the security vulnerabilities that have affected other path canonicalization libraries, giving you confidence in production security-critical applications.
 
@@ -132,6 +134,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 ## License
 
 Licensed under either of:
+
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 

@@ -7,7 +7,7 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **Comprehensive test suite with 91 tests ensuring 100% behavioral compatibility
+//! **Comprehensive test suite with 100 tests ensuring 100% behavioral compatibility
 //! with std::fs::canonicalize for existing paths.**
 //!
 //! Inspired by Python's `pathlib.Path.resolve(strict=False)` behavior, introduced in Python 3.6+.
@@ -70,15 +70,15 @@
 //!
 //! - **Directory Traversal Prevention**: `..` components resolved before filesystem access
 //! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
-//! - **Comprehensive Security Testing**: 23 dedicated security tests covering CVE protection, attack simulation, and vulnerability discovery
+//! - **Comprehensive Security Testing**: 25 dedicated security tests covering CVE protection, attack simulation, and vulnerability discovery
 //! - **Cross-platform Normalization**: Handles platform-specific path quirks consistently
 //!
 //! ### Security Test Coverage
 //!
 //! - **White-box Security Audits**: 14 tests exploiting internal algorithm knowledge
-//! - **Black-box Attack Simulation**: 9 tests treating the API as a black box
+//! - **Black-box Attack Simulation**: 18 tests treating the API as a black box
 //! - **CVE Protection**: Tested against known vulnerabilities (CVE-2022-21658, etc.)
-//! - **Attack Vectors**: Directory traversal, symlink escapes, race conditions, Unicode bypasses
+//! - **Attack Vectors**: Directory traversal, symlink escapes, race conditions, Unicode bypasses, NTFS ADS, filesystem limits
 //!
 //! Note: While this library can be used in security-critical applications, its primary
 //! purpose is accurate path canonicalization and comparison. Security applications should
@@ -89,7 +89,7 @@
 //! - **Time**: O(k) existing components (best: O(1), worst: O(n))
 //! - **Space**: O(n) component storage
 //! - **Filesystem Access**: Minimal - only existing portions are accessed
-//! - **Comprehensive Testing**: 91 tests including security audits, Python-inspired edge cases and cross-platform validation
+//! - **Comprehensive Testing**: 100 tests including security audits, Python-inspired edge cases and cross-platform validation
 //! - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 //!
 //! ## Algorithm
