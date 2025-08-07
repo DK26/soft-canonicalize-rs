@@ -68,11 +68,11 @@ fn test_api_fuzzing_with_malformed_inputs() -> std::io::Result<()> {
             Ok(canonical) => {
                 // If it succeeds, result should be well-formed
                 assert!(canonical.is_absolute() || input.is_empty());
-                println!("Ã¢Å“â€œ Accepted input: {input:?} -> {canonical:?}");
+                println!("✓ Accepted input: {input:?} -> {canonical:?}");
             }
             Err(e) => {
                 // If it fails, should be with appropriate error
-                println!("Ã¢Å“â€œ Rejected input: {input:?} -> {e}");
+                println!("✓ Rejected input: {input:?} -> {e}");
                 assert!(
                     e.kind() == std::io::ErrorKind::InvalidInput
                         || e.kind() == std::io::ErrorKind::NotFound
@@ -229,7 +229,7 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
 
                         if escapes_jail {
                             println!(
-                                "Ã¢Å¡Â Ã¯Â¸Â  Symlink escape detected: {} escapes {}",
+                                "⚠️ Symlink escape detected: {} escapes {}",
                                 canonical.display(),
                                 canonical_jail.display()
                             );
@@ -263,9 +263,7 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
                             !canonical.starts_with(&canonical_jail),
                             "Non-existing file through symlink should enable escape detection"
                         );
-                        println!(
-                            "Ã¢Å“â€œ Non-existing symlink escape properly resolved for detection"
-                        );
+                        println!("✓ Non-existing symlink escape properly resolved for detection");
                     }
                     Err(e) => {
                         println!("Non-existing symlink attack rejected: {e}");
@@ -498,7 +496,7 @@ fn test_filesystem_boundary_crossing() -> std::io::Result<()> {
                 assert!(canonical.is_absolute());
 
                 // Should not crash or cause undefined behavior
-                println!("Ã¢Å“â€œ Boundary crossing handled safely");
+                println!("✓ Boundary crossing handled safely");
             }
             Err(e) => {
                 println!("Boundary test '{test_path}' rejected: {e}");
@@ -604,6 +602,6 @@ fn test_stress_testing_patterns() -> std::io::Result<()> {
     alternating.push("final.txt");
     let _ = soft_canonicalize(&alternating); // Should not crash
 
-    println!("Ã¢Å“â€œ All stress test patterns completed without crashing");
+    println!("✓ All stress test patterns completed without crashing");
     Ok(())
 }

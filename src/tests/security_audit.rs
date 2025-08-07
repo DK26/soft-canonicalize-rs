@@ -321,12 +321,12 @@ fn test_unicode_path_edge_cases() -> std::io::Result<()> {
 
     // Test various Unicode edge cases
     let unicode_paths = vec![
-        "cafÃƒÂ©/naÃƒÂ¯ve.txt",               // Accented characters
-        "Ã°Å¸Â¦â‚¬/rust.txt",                 // Emoji
-        "test\u{200B}hidden.txt",             // Zero-width space
-        "file\u{FEFF}bom.txt",                // BOM character
-        "rÃƒÂ©sumÃƒÂ©/Ã‘â€žÃÂ°ÃÂ¹ÃÂ».txt", // Mixed scripts
-        "Ã°Å¸ÂÂ´Ã³Â ÂÂ§Ã³Â ÂÂ¢Ã³Â ÂÂ³Ã³Â ÂÂ£Ã³Â ÂÂ´Ã³Â ÂÂ¿/flag.txt", // Complex emoji sequence
+        "café/naïve.txt",         // Accented characters
+        "🦀/rust.txt",            // Emoji
+        "test\u{200B}hidden.txt", // Zero-width space
+        "file\u{FEFF}bom.txt",    // BOM character
+        "résumé/тест.txt",        // Mixed scripts
+        "🏴/flag.txt",            // Complex emoji sequence
     ];
 
     for unicode_path in unicode_paths {
