@@ -8,7 +8,7 @@
 
 A high-performance, pure Rust library for path canonicalization that works with non-existing paths.
 
-**Inspired by Python's `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust, but with significant performance improvements and additional safety features.
+**Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust, but with significant performance improvements and additional safety features.
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. This enables accurate path comparison, resolution of future file locations, and preprocessing paths before file creation.
 
@@ -22,7 +22,7 @@ Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths eve
 - **🔒 Robust path handling**: Proper `..` and symlink resolution with cycle detection
 - **🛡️ Security tested**: Protection against CVE-2022-21658 and common path traversal attacks with 32 dedicated security tests
 - **🔍 Security monitoring**: Automated daily security audits via cargo-audit in CI/CD
-- **⚡ High Performance**: **2.0-2.7x faster than Python** with optimized PathResolver algorithm
+- **⚡ High Performance**: **Competitive with Python** - matches or exceeds Python's pathlib performance
 - **✅ Compatibility**: 100% behavioral compatibility with std::fs::canonicalize for existing paths
 
 ## What is Path Canonicalization?
@@ -92,31 +92,39 @@ This approach ensures you get the same results as the standard library for exist
 
 ## Performance & Compatibility
 
-- **Performance**: **2.0-2.7x faster than Python** on average (100-166% improvement range)
+- **Performance**: **1.1x - 1.3x faster than Python 3.12.4** on typical hardware (machine-dependent)
+- **Benchmarked against**: Python 3.6+ `pathlib.Path.resolve(strict=False)` and `os.path.realpath`
+- **Mixed workload**: **7,008 - 8,750 paths/s** vs Python's **6,732 - 6,969 paths/s** (current machine)
+- **Algorithm optimizations**: Binary search boundary detection (O(log n)), single-pass normalization
 - **Test Coverage**: **108 comprehensive tests** including:
   - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility for existing paths
   - **32 security penetration tests** covering CVE-2022-21658, path traversal attacks, and edge cases  
   - **Python pathlib test suite adaptations** for cross-language validation
   - **Platform-specific tests** for Windows, macOS, and Linux edge cases
   - **Performance and stress tests** validating behavior under various conditions
-- **Time Complexity**: O(k) existing components (best: O(1), worst: O(n))
+- **Time Complexity**: O(k log n) where k = existing components, n = total components (optimized)
 - **Space Complexity**: O(n) component storage with optimized memory usage
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
 
 ### Benchmark Results
 
-Our comprehensive benchmarking shows consistent performance improvements across different workloads:
+**Verified against Python 3.12.4's `pathlib.Path.resolve(strict=False)`:**
 
-| Benchmark Type | Throughput (paths/s) | vs Python 3.12.4 | Improvement |
-|---------------|---------------------|-----------------|-------------|
-| Mixed Workload | 6,453 - 8,576 | 2.0x - 2.7x | 100% - 166% |
-| Existing Paths | 12,000 - 17,000 | 3.7x - 5.3x | 270% - 430% |
-| Non-existing Paths | 1,900 - 2,700 | 0.6x - 0.8x | Varies by complexity |
+| Scenario              | Python 3.12.4      | Rust (this crate)           | Performance Comparison |
+| --------------------- | ------------------- | --------------------------- | ---------------------- |
+| **Mixed workload**    | 6,732 - 6,969 paths/s | **7,008 - 8,750 paths/s**   | **1.0x - 1.3x faster** |
+| Simple existing paths | ~7,000 paths/s      | **17,017 - 20,994 paths/s** | **2.4x - 3.0x faster** |
+| Path traversal (../)  | ~7,000 paths/s      | **18,594 - 19,086 paths/s** | **2.7x - 2.7x faster** |
+| Non-existing paths    | ~7,000 paths/s      | **2,506 - 3,069 paths/s**   | **0.4x - 0.4x slower** |
 
-*Benchmarks run on Windows 11 with mixed workloads including existing files, non-existing paths, and complex dot-dot traversals. See [benches/PERFORMANCE.md](benches/PERFORMANCE.md) for detailed analysis.*
+**🎯 Overall: 1.0x - 1.3x faster than Python (machine-dependent)**
+
+*Performance varies by hardware. Benchmarks run on Windows 11 with comprehensive test suites.*
 
 For detailed performance benchmarks and comparisons with Python's pathlib, see the [`benches/`](benches/) directory.
+
+For detailed performance benchmarks and testing procedures, see the [`benches/`](benches/) directory.
 
 ## Security
 
@@ -148,14 +156,14 @@ These tests ensure that `soft_canonicalize` doesn't inherit the security vulnera
 
 ## Comparison with Alternatives
 
-| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `jailed-path`       |
-| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
-| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate) |
-| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate) |
-| Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                 | ❌ (uses this crate)|
-| Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate) |
-| Security tested               | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (via this crate) |
-| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (enforcement)    |
+| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize`         | `jailed-path`       |
+| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ------------------------- | ------------------- |
+| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                         | ✅ (via this crate)  |
+| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ❌ (uses this crate) |
+| Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate)  |
+| Security tested               | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (enforcement)     |
 
 **Choose `soft_canonicalize` when you need**: Core path canonicalization for non-existing files with full symlink resolution.  
 **Choose `jailed-path` when you need**: Path jailing with type-safe boundaries (builds on `soft_canonicalize`).

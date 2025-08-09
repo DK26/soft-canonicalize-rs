@@ -17,13 +17,13 @@ fn test_relative_path_with_traversal() -> std::io::Result<()> {
     // Serialize tests that depend on current working directory
     let _lock = WORKING_DIR_MUTEX.lock().unwrap();
 
+    // Calculate the expected result FIRST: current_dir + "part"
+    let current_dir = std::env::current_dir()?;
+    let expected = fs::canonicalize(current_dir)?.join("part");
+
     // Test the specific case: "non/existing/../../part"
     // This should resolve to current_dir/part, cancelling out the non/existing parts
     let result = soft_canonicalize(Path::new("non/existing/../../part"))?;
-
-    // Calculate the expected result: current_dir + "part"
-    let current_dir = std::env::current_dir()?;
-    let expected = fs::canonicalize(current_dir)?.join("part");
 
     // The result should be exactly current_dir/part
     assert_eq!(result, expected);

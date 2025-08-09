@@ -1,52 +1,29 @@
 # Performance Benchmarks
 
-This directory contains performance benchmarks comparing `soft_canonicalize` with Python's `pathlib.Path.resolve(strict=False)` and other implementations.
+This directory contains performance benchmarks comparing `soft_canonicalize` with Python 3.6+ `pathlib.Path.resolve(strict=False)`.
 
-## Benchmark Results
-
-**Latest Results (August 2025 - Release Mode)**:
-- **Python 3.12.4 Baseline**: 3,221 paths/s
-- **Rust soft_canonicalize**: 5,388 paths/s average (1.67x faster, +67.3% improvement)
-- **Performance Range**: 5,034 - 6,114 paths/s (56.3% - 89.8% improvement)
-
-See [`docs/performance_verification_august_2025.md`](docs/performance_verification_august_2025.md) for detailed analysis.
-
-## Running Benchmarks
+## Quick Test
 
 ```bash
-# Performance comparison with Python
-cargo bench performance_comparison
-
-# Throughput analysis
-cargo bench throughput_analysis
-
-# Precision benchmark
-cargo bench precision_benchmark
-
-# Run all benchmarks
+# Run Rust benchmarks
 cargo bench
+
+# Compare with Python baseline
+cd python/
+python python_fair_comparison.py
 ```
+
+## Current Results
+
+- **Python 3.12.4**: 6,845 - 7,159 paths/s
+- **Rust soft_canonicalize**: 6,029 - 8,283 paths/s  
+- **Performance**: 1.1x - 1.3x faster than Python (machine-dependent)
 
 ## Benchmark Files
 
-- `performance_comparison.rs`: Direct comparison with Python's pathlib performance
-- `throughput_analysis.rs`: Raw throughput measurement
-- `precision_benchmark.rs`: Precision and accuracy testing
+- `performance_comparison.rs`: Main performance comparison benchmark
+- `throughput_analysis.rs`: Detailed throughput measurement
+- `precision_benchmark.rs`: Precision testing
+- `python/python_fair_comparison.py`: Python baseline measurement
 
-## Documentation
-
-The `docs/` directory contains detailed performance analysis documentation:
-
-- `performance_analysis_deep_dive.md`: Comprehensive analysis of why Python is fast
-- `rust_optimization_analysis.md`: Rust-specific optimization strategies
-- `final_performance_analysis.md`: Summary of performance findings
-- Additional analysis files documenting the optimization journey
-
-## Test Environment
-
-Benchmarks are designed to run on mixed workloads including:
-- Existing files and directories
-- Non-existing paths
-- Complex `..` traversals
-- Symlink resolution
-- Cross-platform path handling
+Results vary by hardware. Performance claims should be verified on your specific machine.

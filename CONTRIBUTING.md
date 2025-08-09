@@ -68,14 +68,38 @@ bash ci-local.sh
 
 This runs all checks (format, clippy, tests, docs, security audit, MSRV) and ensures std compatibility. If it passes, your code is ready.
 
-**Test Coverage**: The project has 101 tests total:
+**Test Coverage**: The project has 108 tests total:
 
-- 68 unit tests (in `src/tests/`)
-- 18 integration tests (black-box security tests)  
+- 78 unit tests (in `src/tests/`)
+- 6 complex attack tests (blackbox security)  
+- 9 security tests (comprehensive security coverage)
 - 11 compatibility tests (std library compatibility)
 - 4 documentation tests
 
+**Project Structure**: 
+- `src/` - Main library code and unit tests
+- `examples/` - User-facing examples (essential examples only)
+- `examples/archive/` - Historical examples from optimization work
+- `benches/` - Performance benchmarks vs Python baseline
+- `benches/python/` - Historical Python investigation scripts
+- `tests/` - Integration and blackbox security tests
+
 **Benchmarks**: Performance benchmarks are in `benches/` and can be run with `cargo bench`.
+
+**Performance Testing**: To verify performance claims:
+```bash
+# Measure Python baseline on your machine
+cd benches/python/
+python python_fair_comparison.py
+
+# Run Rust benchmarks
+cd ..
+cargo bench performance_comparison
+
+# Compare results - expect Rust 1.1x-1.3x faster
+```
+
+See [`benches/README.md`](benches/README.md) for comprehensive performance testing guide.
 
 **Examples**: See `examples/` directory for usage examples and demonstrations.
 
