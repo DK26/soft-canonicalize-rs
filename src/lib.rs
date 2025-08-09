@@ -3,7 +3,7 @@
 //! A high-performance, pure Rust library for path canonicalization that works with non-existing paths.
 //!
 //! **Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`** - this library brings the same
-//! functionality to Rust, with additional safety features.
+//! functionality to Rust with enhanced performance and comprehensive testing.
 //!
 //! Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths
 //! even when components don't exist on the filesystem. This enables accurate path
@@ -19,7 +19,7 @@
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 //! - **🔧 Zero dependencies** - Only uses std library  
 //! - **⚡ Fast** - 1.3x-1.5x faster than Python's pathlib in mixed workloads  
-//! - **🔒 Secure** - 108 tests including CVE protections and path traversal prevention  
+//! - **🔒 Comprehensive Testing** - 108 tests including security scenarios and cross-platform validation  
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
 //!
@@ -118,6 +118,7 @@
 //! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
 //! - **Comprehensive Security Testing**: 40+ dedicated security tests covering CVE protection, attack simulation, and vulnerability discovery
 //! - **Cross-platform Normalization**: Handles platform-specific path quirks consistently
+//! - **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
 //!
 //! ### Test Coverage
 //!

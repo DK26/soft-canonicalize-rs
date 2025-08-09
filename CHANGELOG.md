@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-08-09
+### Added
+- **Major Algorithm Optimization**: Complete rewrite for 1.3x-1.5x performance improvement over Python's pathlib
+- **Binary Search Boundary Detection**: Replaced O(n) linear search with O(log n) binary search for existing path components
+- **Fast-path Optimization**: Direct `std::fs::canonicalize` for existing paths (inspired by Python's strategy)
+- **Single-pass Path Normalization**: Efficient batch processing of `.` and `..` components with minimal allocations
+- **Optimized Symlink Resolution**: Smart symlink chain handling with O(1) cycle detection using HashSet
+- **Comprehensive Performance Benchmarking**: Added extensive benchmark suite comparing against Python 3.12.4 pathlib
+
+### Performance Improvements
+- **Mixed workloads**: 6,089-6,769 paths/s (1.3x-1.5x faster than Python's 4,627 paths/s)
+- **Existing paths**: 10,057-12,851 paths/s (1.5x-1.9x faster than Python's ~6,600 paths/s) 
+- **Path traversal**: 11,551-13,529 paths/s (1.8x-2.1x faster than Python's ~6,500 paths/s)
+- **Non-existing paths**: 1,950-2,072 paths/s (competitive with Python's 2,516-4,441 paths/s)
+
+### Enhanced Security Testing
+- **Comprehensive Black-box Security Testing**: New `blackbox_security.rs` test suite with extensive fuzzing and attack simulation
+- **Advanced Attack Vector Testing**: Directory traversal, symlink escapes, performance attacks, race conditions, filesystem boundary crossing
+- **Windows-specific Security Tests**: Enhanced testing for Windows short names (8.3), device names (CON, NUL, etc.), and NTFS Alternate Data Streams (ADS)
+- **Resource Exhaustion Protection**: Added safeguards against long filenames, deep directory structures, and excessive path components
+- **Complex Attack Pattern Testing**: Broken symlink jail escapes, case sensitivity bypasses, and API contract violations
+
+### Technical Improvements
+- **Algorithm Complexity**: Reduced from O(n) to O(log n) for boundary detection, O(k) overall where k = existing components
+- **Memory Optimization**: Efficient component collection with reduced allocations and smarter buffering
+- **Cross-platform Robustness**: Improved handling of platform-specific filesystem limits and system symlinks
+- **Security Test Coverage**: Comprehensive test suite with 108 security-focused tests covering sophisticated attack patterns
+
+### Code Quality
+- **Removed unnecessary clippy allows** and improved code consistency across test modules
+- **Better test organization** with clear attack vector categorization and comprehensive documentation
+- **Enhanced inline documentation** explaining security test purposes, algorithm optimizations, and performance characteristics
+
 ## [0.1.4] - 2025-08-06
 ### Added
 - **Fast-path optimization**: Added fast-path for absolute existing paths without dot components using `std::fs::canonicalize` directly

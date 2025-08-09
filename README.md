@@ -1,8 +1,6 @@
-# soft-canonicalize
+﻿# soft-canonicalize
 
-[![Crates.io](https://img.shields.io**That's it!** Zero dependencies, pure Rust stdlib.
-
-## Examplesoft-canonicalize.svg)](https://crates.io/crates/soft-canonicalize)
+[![Crates.io](https://img.shields.io/crates/v/soft-canonicalize.svg)](https://crates.io/crates/soft-canonicalize)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Documentation](https://docs.rs/soft-canonicalize/badge.svg)](https://docs.rs/soft-canonicalize)
 [![CI](https://github.com/DK26/soft-canonicalize-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/DK26/soft-canonicalize-rs/actions)
@@ -10,7 +8,7 @@
 
 **Path canonicalization that works with non-existing paths.**
 
-**Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust, with additional safety features.
+**Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust with enhanced performance and comprehensive testing.
 
 ## Why Use This?
 
@@ -18,7 +16,7 @@
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 **🔧 Zero dependencies** - Only uses std library  
 **⚡ Fast** - 1.3x-1.5x faster than Python's pathlib in mixed workloads  
-**🔒 Secure** - 108 tests including CVE protections and path traversal prevention  
+**🔒 Secure** - 108 comprehensive tests including security scenarios and path traversal prevention  
 **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
 
@@ -58,7 +56,7 @@ let result = soft_canonicalize("src/lib.rs")?;
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.1.4"
+soft-canonicalize = "0.2.0"
 ```
 
 **That's it!** Zero dependencies, pure Rust stdlib.
@@ -136,6 +134,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 - **Directory Traversal Prevention**: `..` components resolved before filesystem access
 - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection  
 - **Cross-platform Path Normalization**: Handles Windows drive letters, UNC paths, and Unix absolute paths
+- **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
 
 **Note on Symlink Handling**: Unlike some path normalization libraries, this crate resolves symlinks when they exist, providing stronger guarantees about the final path destination. This behavior matches `std::fs::canonicalize` and can help prevent certain types of path-based security issues in applications that require it.
 
@@ -149,11 +148,11 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 - **Platform-specific tests** for Windows, macOS, and Linux edge cases
 - **Performance and stress tests** validating behavior under various conditions
 
-### Critical Safety Mechanisms
+### Path Resolution Features
 
 **🔒 Symlink Cycle Detection**: Tracks visited symlinks to prevent infinite recursion and stack overflow attacks. Tested with comprehensive cycle detection tests ensuring robust protection against malicious symlink chains.
 
-**🛡️ Symlinked Directory Jail Break Prevention**: Properly resolves symlinked directories that point outside security boundaries, enabling detection of sophisticated jail escape attempts. Our test suite includes specific scenarios where attackers use symlinked directories (e.g., `jail/uploads/user123 -> /outside/secrets/`) to escape containment when accessing non-existing files through the symlink.
+**🛡️ Symlink Resolution for Security Testing**: Properly resolves symlinked directories to their actual targets, enabling security applications to detect when paths escape intended boundaries. Our test suite includes scenarios where symlinked directories (e.g., `jail/uploads/user123 -> /outside/secrets/`) point outside security boundaries, allowing applications to test for jail break vulnerabilities.
 
 ### 🔍 Tested Against Known Vulnerabilities
 
