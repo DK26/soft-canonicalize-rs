@@ -453,9 +453,8 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         // This is a final attempt to ensure proper canonicalization
         if !symlink_base.exists() {
             // For non-existing paths, try to canonicalize the existing parent
-            let original_base = &symlink_base;
-            let mut current = symlink_base.clone();
-            let mut final_result = symlink_base.clone();
+            let mut current = symlink_base;
+            let mut final_result = current.clone();
 
             while let Some(parent) = current.parent() {
                 if parent.exists() {
@@ -464,7 +463,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
                         eprintln!("DEBUG: Final canonicalization attempt on parent: {parent:?}");
                     }
                     if let Ok(canonical_parent) = fs::canonicalize(parent) {
-                        if let Ok(relative_part) = original_base.strip_prefix(parent) {
+                        if let Ok(relative_part) = final_result.strip_prefix(parent) {
                             final_result = canonical_parent.join(relative_part);
                             #[cfg(debug_assertions)]
                             if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
@@ -536,7 +535,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
     let mut current = symlink_path.to_path_buf();
     let mut depth = 0;
-    let mut visited_paths: Vec<String> = Vec::new();
+    let mut visited_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Use different depth limits based on the platform and symlink type
     let effective_max_depth = if is_likely_system_symlink(&current) {
@@ -549,15 +548,14 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
     };
 
     loop {
-        // Check for cycles using string comparison
+        // OPTIMIZATION: Use HashSet for O(1) cycle detection instead of Vec O(n)
         let current_str = current.to_string_lossy().to_string();
-        if visited_paths.contains(&current_str) {
+        if !visited_paths.insert(current_str) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Too many levels of symbolic links",
             ));
         }
-        visited_paths.push(current_str);
 
         // Try to read the symlink
         match fs::read_link(&current) {
@@ -570,20 +568,15 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
                     ));
                 }
 
-                // Enhanced security check for traversal attempts
+                // OPTIMIZED: Simplified security check for better performance
                 if !target.is_absolute() && target.to_string_lossy().contains("..") {
-                    let components: Vec<_> = target.components().collect();
-                    let dotdot_count = components
-                        .iter()
+                    let dotdot_count = target
+                        .components()
                         .filter(|c| matches!(c, std::path::Component::ParentDir))
                         .count();
-                    let normal_count = components
-                        .iter()
-                        .filter(|c| matches!(c, std::path::Component::Normal(_)))
-                        .count();
 
-                    // Be more restrictive with .. components
-                    if dotdot_count > normal_count || dotdot_count > 3 {
+                    // Quick check - if more than 3 .. components, block it
+                    if dotdot_count > 3 {
                         return Err(io::Error::new(
                             io::ErrorKind::PermissionDenied,
                             "Symlink traversal blocked for security",
@@ -591,17 +584,16 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
                     }
                 }
 
-                // Resolve the target
+                // OPTIMIZED: Target resolution with proper relative path handling
                 if target.is_absolute() {
                     current = target;
                 } else if let Some(parent) = current.parent() {
                     let resolved = parent.join(&target);
                     let normalized = simple_normalize_path(&resolved);
 
-                    // Special handling for non-existing symlink targets
-                    // If the normalized path doesn't exist, try alternative interpretations
+                    // Special handling for ../path patterns to ensure proper resolution
                     if !normalized.exists() && target.to_string_lossy().starts_with("../") {
-                        // For ../path patterns, also try treating it as relative to the symlink's directory
+                        // For ../path patterns, try alternative interpretation
                         if let Ok(stripped) = target.strip_prefix("../") {
                             let alternative = parent.join(stripped);
                             if alternative.exists() || alternative.ancestors().any(|a| a.exists()) {

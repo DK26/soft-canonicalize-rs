@@ -4,9 +4,12 @@ This directory contains performance benchmarks comparing `soft_canonicalize` wit
 
 ## Benchmark Results
 
-**Latest Results (Release Mode)**:
+**Latest Results (August 2025 - Release Mode)**:
 - **Python 3.12.4 Baseline**: 3,221 paths/s
-- **Rust soft_canonicalize**: 5,269 paths/s (1.64x faster, +63.6% improvement)
+- **Rust soft_canonicalize**: 5,388 paths/s average (1.67x faster, +67.3% improvement)
+- **Performance Range**: 5,034 - 6,114 paths/s (56.3% - 89.8% improvement)
+
+See [`docs/performance_verification_august_2025.md`](docs/performance_verification_august_2025.md) for detailed analysis.
 
 ## Running Benchmarks
 
