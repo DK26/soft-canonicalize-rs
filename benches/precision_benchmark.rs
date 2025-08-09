@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Overall mixed workload: {paths_per_second:.0} paths/s");
 
     println!("\n🔍 Performance Ratio Analysis");
-    let python_baseline = 3221.0; // From Python benchmark
+    let python_baseline = 4627.0; // From current Python benchmark
     let ratio = paths_per_second / python_baseline;
     println!("Rust vs Python ratio: {ratio:.2}x");
 

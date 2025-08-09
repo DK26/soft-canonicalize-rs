@@ -135,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Compare with Python baseline
     println!("\n📊 Comparison with Python 3.12.4:");
     println!("==================================");
-    let python_baseline = 3221.0;
+    let python_baseline = 4627.0;
 
     println!("Python 3.12.4:            {python_baseline:>10.0} paths/second");
     println!("Rust (mixed workload):     {throughput:>10.0} paths/second");

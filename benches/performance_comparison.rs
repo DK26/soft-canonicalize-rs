@@ -88,22 +88,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n📊 Performance Summary");
     println!("------------------------------------------------------------");
-    println!("Python 3.12.4 Baseline  : 3,221 paths/s");
+    println!("Python 3.12.4 Baseline  : 4,627 paths/s (current measurement)");
     println!(
         "Rust soft_canonicalize   : {:.0} paths/s ({:.2}x vs Python)",
         rust_perf,
-        rust_perf / 3221.0
+        rust_perf / 4627.0
     );
 
-    if rust_perf > 3221.0 {
+    if rust_perf > 4627.0 {
         println!(
             "✅ Rust beats Python by {:.1}%",
-            (rust_perf / 3221.0 - 1.0) * 100.0
+            (rust_perf / 4627.0 - 1.0) * 100.0
         );
     } else {
         println!(
             "⚠️  Rust is {:.1}% slower than Python",
-            (1.0 - rust_perf / 3221.0) * 100.0
+            (1.0 - rust_perf / 4627.0) * 100.0
         );
     }
 
