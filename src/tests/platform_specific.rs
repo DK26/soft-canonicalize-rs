@@ -62,7 +62,7 @@ fn test_unix_specific_paths() -> std::io::Result<()> {
     fs::create_dir_all(temp_dir.path().join("subdir"))?;
 
     if let (Ok(our_result), Ok(std_result)) = (
-        soft_canonicalize(&existing_with_slashes),
+        soft_canonicalize(existing_with_slashes),
         fs::canonicalize(temp_dir.path().join("subdir")),
     ) {
         assert_eq!(

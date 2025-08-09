@@ -58,7 +58,7 @@ mod test_python_inspired {
 
         // Test: existing_dir/existing_file/non/existing/path
         let mixed_path = existing_file.join("non/existing/path.txt");
-        let result = soft_canonicalize(&mixed_path);
+        let result = soft_canonicalize(mixed_path);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
@@ -73,7 +73,7 @@ mod test_python_inspired {
 
         // Test: existing_dir/non_existing/file.txt
         let partial_path = existing_dir.join("non_existing/file.txt");
-        let result = soft_canonicalize(&partial_path);
+        let result = soft_canonicalize(partial_path);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
@@ -103,7 +103,7 @@ mod test_python_inspired {
 
         // Test resolving through the symlink with non-existing suffix
         let test_path = link_dot.join("some/nonexisting/path.txt");
-        let result = soft_canonicalize(&test_path);
+        let result = soft_canonicalize(test_path);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
@@ -141,7 +141,7 @@ mod test_python_inspired {
             .join("..")
             .join("..")
             .join("target.txt");
-        let result = soft_canonicalize(&basic_traversal);
+        let result = soft_canonicalize(basic_traversal);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(
@@ -153,11 +153,11 @@ mod test_python_inspired {
         let dir_a = base_path.join("dirA");
         let dir_b = base_path.join("dirB");
         fs::create_dir(&dir_a).unwrap();
-        fs::create_dir(&dir_b).unwrap();
+        fs::create_dir(dir_b).unwrap();
 
         // Test: dirA/../dirB/non_existing_file.txt
         let traversal_path = dir_a.join("../dirB/non_existing_file.txt");
-        let result = soft_canonicalize(&traversal_path);
+        let result = soft_canonicalize(traversal_path);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
@@ -171,7 +171,7 @@ mod test_python_inspired {
             .join("../../../temp/../")
             .join(base_path.file_name().unwrap())
             .join("dirB/deep/non/existing.txt");
-        let result = soft_canonicalize(&complex_traversal);
+        let result = soft_canonicalize(complex_traversal);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
@@ -194,7 +194,7 @@ mod test_python_inspired {
 
         // Python's strict=False handles this by returning the path as-is when hitting a loop
         let loop_path = link_x.join("foo/bar.txt");
-        let result = soft_canonicalize(&loop_path);
+        let result = soft_canonicalize(loop_path);
 
         // Our implementation should detect the loop and handle it gracefully
         // The exact behavior may vary, but it should not infinite loop
@@ -218,7 +218,7 @@ mod test_python_inspired {
 
         // Try to resolve a path that goes "through" the file
         let through_file = file_path.join("subdir/file.txt");
-        let result = soft_canonicalize(&through_file);
+        let result = soft_canonicalize(through_file);
 
         // Our implementation should handle this - the existing portion resolves to the file,
         // and the non-existing portion is appended
@@ -288,7 +288,7 @@ mod test_python_inspired {
         }
 
         // Add a very deep non-existing suffix
-        let mut deep_path = current.clone();
+        let mut deep_path = current;
         for i in 0..50 {
             deep_path = deep_path.join(format!("deep_{i}"));
         }

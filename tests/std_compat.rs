@@ -3,8 +3,6 @@
 //! These tests ensure that soft_canonicalize behaves compatibly with std::fs::canonicalize
 //! for existing paths, but handles non-existing paths gracefully.
 
-#![allow(clippy::needless_borrows_for_generic_args)]
-
 use soft_canonicalize::soft_canonicalize;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -25,7 +23,7 @@ fn got_symlink_permission(tmpdir: &TempDir) -> bool {
         let link = tmpdir.path().join("symlink_test");
         let target = tmpdir.path().join("target");
         File::create(&target).ok();
-        std::os::windows::fs::symlink_file(&target, &link).is_ok()
+        std::os::windows::fs::symlink_file(&target, link).is_ok()
     }
     #[cfg(not(windows))]
     {
@@ -212,7 +210,7 @@ fn soft_canonicalize_dots() {
                 .join("./b")
                 .join("../b")
                 .join("test.txt"),
-            file.clone(),
+            file,
         ),
     ];
 
@@ -224,7 +222,7 @@ fn soft_canonicalize_dots() {
 
     // Test with non-existing components
     let nonexisting_with_dots = a.join("b").join("..").join("c").join("test.txt");
-    let result = soft_canonicalize(&nonexisting_with_dots).unwrap();
+    let result = soft_canonicalize(nonexisting_with_dots).unwrap();
     let expected = tmpdir_canonical.join("a").join("c").join("test.txt");
     assert_eq!(result, expected);
 }
@@ -280,7 +278,7 @@ fn soft_canonicalize_edge_cases() {
     #[cfg(windows)]
     {
         // Test Windows drive root - std::fs::canonicalize returns UNC format
-        let c_root = soft_canonicalize(&Path::new("C:\\")).unwrap();
+        let c_root = soft_canonicalize(Path::new("C:\\")).unwrap();
         assert_eq!(c_root, PathBuf::from("\\\\?\\C:\\"));
     }
 }
@@ -340,7 +338,7 @@ fn soft_canonicalize_unicode() {
 
     // Test non-existing Unicode path
     let nonexisting_unicode = unicode_dir.join("не_существует.txt");
-    let result = soft_canonicalize(&nonexisting_unicode).unwrap();
+    let result = soft_canonicalize(nonexisting_unicode).unwrap();
     assert!(result.to_string_lossy().contains("не_существует.txt"));
 }
 

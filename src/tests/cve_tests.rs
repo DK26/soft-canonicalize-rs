@@ -19,7 +19,6 @@ fn test_cve_2022_21658_race_condition() {
     fs::create_dir(&secret_target).unwrap();
 
     let symlink_path_clone = symlink_path.clone();
-    let secret_target_clone = secret_target.clone();
 
     let handle = thread::spawn(move || {
         // Give the main thread a chance to start processing the path
@@ -27,7 +26,7 @@ fn test_cve_2022_21658_race_condition() {
 
         // Simulate the attack: quickly replace the symlink
         fs::remove_file(&symlink_path_clone).unwrap();
-        std::os::unix::fs::symlink(&secret_target_clone, &symlink_path_clone).unwrap();
+        std::os::unix::fs::symlink(&secret_target, &symlink_path_clone).unwrap();
     });
 
     // Attempt to canonicalize the path. This should be safe and not follow the new symlink.

@@ -223,7 +223,7 @@ echo
 echo "🔧 Auto-fixing common issues..."
 run_fix "Format" "cargo fmt --all"
 run_fix "Clippy Fixable Issues" "cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
-echo "🦀 Now running CI checks after auto-fixes..."
+echo "🦀 Now running CI checks (same as GitHub Actions)..."
 echo
 
 # Run all CI checks in order
@@ -234,45 +234,72 @@ run_check "Tests (includes compilation)" "cargo test --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 run_check "Documentation" "RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --document-private-items --all-features"
 
+# Security audit (same as GitHub Actions)
+echo "🔍 Running security audit..."
+if command -v cargo-audit &> /dev/null; then
+    run_check "Security Audit" "cargo audit"
+else
+    echo "⚠️  cargo-audit not found. Installing..."
+    if cargo install cargo-audit --locked; then
+        echo "✓ cargo-audit installed successfully"
+        run_check "Security Audit" "cargo audit"
+    else
+        echo "❌ Failed to install cargo-audit. Skipping security audit."
+        echo "💡 To install manually: cargo install cargo-audit"
+    fi
+fi
+
 # Check MSRV compatibility (same as GitHub Actions)
 echo "🔍 Checking Minimum Supported Rust Version (1.70.0)..."
 if command -v rustup &> /dev/null; then
     if rustup toolchain list | grep -q "1.70.0"; then
         echo "✓ Found Rust 1.70.0 toolchain, checking MSRV compatibility..."
-        
+
+        # Ensure Clippy is installed for MSRV
+        if ! rustup component list --toolchain 1.70.0 | grep -q "clippy.*(installed)"; then
+            echo "🔧 Installing Clippy for Rust 1.70.0..."
+            rustup component add clippy --toolchain 1.70.0
+        fi
+
         # Regenerate Cargo.lock with MSRV to avoid version conflicts
         echo "🔧 Regenerating Cargo.lock with MSRV Rust 1.70.0..."
         if [[ -f "Cargo.lock" ]]; then
             echo "  • Removing existing Cargo.lock"
             rm -f Cargo.lock
         fi
-        
+
         echo "  • Generating new Cargo.lock with Rust 1.70.0"
         if rustup run 1.70.0 cargo generate-lockfile; then
             echo "  ✓ Cargo.lock regenerated successfully"
             run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
+            run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
         else
             echo "  ❌ Failed to generate Cargo.lock with Rust 1.70.0"
             echo "  💡 Trying fallback: cargo update then check"
             run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
+            run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
         fi
     else
         echo "⚠️  Rust 1.70.0 not installed. Installing for MSRV check..."
         if rustup toolchain install 1.70.0; then
+            echo "🔧 Installing Clippy for Rust 1.70.0..."
+            rustup component add clippy --toolchain 1.70.0
             echo "🔧 Regenerating Cargo.lock with MSRV Rust 1.70.0..."
             if [[ -f "Cargo.lock" ]]; then
                 echo "  • Removing existing Cargo.lock"
                 rm -f Cargo.lock
             fi
-            
+
             echo "  • Generating new Cargo.lock with Rust 1.70.0"
             if rustup run 1.70.0 cargo generate-lockfile; then
                 echo "  ✓ Cargo.lock regenerated successfully"
                 run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
+                run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
             else
                 echo "  ❌ Failed to generate Cargo.lock with Rust 1.70.0"
                 echo "  💡 Trying fallback: cargo update then check"
                 run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
+                run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
             fi
         else
             echo "❌ Failed to install Rust 1.70.0. Skipping MSRV check."

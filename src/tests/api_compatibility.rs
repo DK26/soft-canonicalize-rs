@@ -52,7 +52,7 @@ fn test_generic_path_parameter_pathbuf_ref() -> std::io::Result<()> {
 
     // Test with &PathBuf (common usage pattern)
     let path_buf = temp_dir.path().to_path_buf();
-    let result = soft_canonicalize(&path_buf)?;
+    let result = soft_canonicalize(path_buf)?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
     assert_eq!(result, expected);

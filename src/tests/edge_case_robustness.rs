@@ -18,14 +18,14 @@ fn test_broken_symlink_handling() -> std::io::Result<()> {
         let broken_link = _temp_dir.path().join("broken_link");
         let non_existing_target = _temp_dir.path().join("does_not_exist.txt");
 
-        if symlink(&non_existing_target, &broken_link).is_ok() {
+        if symlink(non_existing_target, &broken_link).is_ok() {
             // Test that we can still canonicalize paths through broken symlinks
             let result = soft_canonicalize(&broken_link);
             assert!(result.is_ok(), "Should handle broken symlinks gracefully");
 
             // Test with additional path components after broken symlink
             let path_through_broken = broken_link.join("more/components");
-            let result2 = soft_canonicalize(&path_through_broken);
+            let result2 = soft_canonicalize(path_through_broken);
             assert!(
                 result2.is_ok(),
                 "Should handle paths through broken symlinks"
@@ -96,7 +96,7 @@ fn test_very_long_paths() -> std::io::Result<()> {
     let long_component = "a".repeat(255); // Max filename length on most systems
     let long_path = format!("some/path/{long_component}/file.txt");
 
-    let result = soft_canonicalize(&long_path);
+    let result = soft_canonicalize(long_path);
     assert!(result.is_ok(), "Should handle long paths");
 
     Ok(())
@@ -138,7 +138,7 @@ fn test_nested_symlink_depth_boundary() -> std::io::Result<()> {
         let link2 = temp_dir.path().join("link2");
         let final_target = temp_dir.path().join("target/file.txt");
 
-        if symlink(&link2, &link1).is_ok() && symlink(&final_target, &link2).is_ok() {
+        if symlink(&link2, &link1).is_ok() && symlink(final_target, &link2).is_ok() {
             let result = soft_canonicalize(&link1);
             assert!(result.is_ok(), "Should handle moderate symlink depth");
         }

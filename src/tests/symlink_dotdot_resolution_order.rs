@@ -43,7 +43,7 @@ fn test_lexical_dotdot_resolution_standard_behavior() {
     let target_path = temp_path.join("target");
 
     fs::create_dir_all(&a_b_path).unwrap();
-    fs::create_dir_all(&target_path).unwrap();
+    fs::create_dir_all(target_path).unwrap();
 
     // The test path: temp/a/b/symlink_that_doesnt_exist/../target_file
     //
