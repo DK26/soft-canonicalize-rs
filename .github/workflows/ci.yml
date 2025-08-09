@@ -150,6 +150,9 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+      env:
+        # Enable debug output for macOS to diagnose symlink issues
+        SOFT_CANONICALIZE_DEBUG: ${{ matrix.os == 'macos-latest' && '1' || '' }}
 
   docs:
     name: Documentation

@@ -1,5 +1,9 @@
 use crate::soft_canonicalize;
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+// Synchronize tests that depend on current working directory
+static WORKING_DIR_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_symlink_depth_limit() {
@@ -53,6 +57,9 @@ fn test_symlink_depth_documentation() {
 
 #[test]
 fn test_python_style_edge_cases() {
+    // Serialize tests that depend on current working directory
+    let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
     use std::env;
     use tempfile::TempDir;
 

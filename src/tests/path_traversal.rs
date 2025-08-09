@@ -6,10 +6,17 @@
 use crate::soft_canonicalize;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 use tempfile::tempdir;
+
+// Synchronize tests that depend on current working directory
+static WORKING_DIR_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_relative_path_with_traversal() -> std::io::Result<()> {
+    // Serialize tests that depend on current working directory
+    let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
     // Test the specific case: "non/existing/../../part"
     // This should resolve to current_dir/part, cancelling out the non/existing parts
     let result = soft_canonicalize(Path::new("non/existing/../../part"))?;

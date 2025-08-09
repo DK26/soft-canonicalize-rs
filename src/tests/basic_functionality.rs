@@ -6,7 +6,11 @@
 use crate::soft_canonicalize;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 use tempfile::tempdir;
+
+// Synchronize tests that depend on current working directory
+static WORKING_DIR_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_existing_path() -> std::io::Result<()> {
@@ -38,6 +42,9 @@ fn test_non_existing_path() -> std::io::Result<()> {
 
 #[test]
 fn test_relative_path() -> std::io::Result<()> {
+    // Serialize tests that depend on current working directory
+    let _lock = WORKING_DIR_MUTEX.lock().unwrap();
+
     let result = soft_canonicalize(Path::new("non/existing/relative/path.txt"))?;
 
     // Calculate the expected result: current_dir + "non/existing/relative/path.txt"
