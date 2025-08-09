@@ -911,19 +911,9 @@ fn test_alternative_interpretation_exploitation() -> std::io::Result<()> {
                 Ok(resolved) => {
                     // Verify the resolution is reasonable and safe
                     assert!(resolved.is_absolute());
-
-                    // Log for manual inspection in case of unexpected behavior
-                    #[cfg(debug_assertions)]
-                    if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                        eprintln!("Alternative interpretation test {i}: {target} -> {resolved:?}");
-                    }
                 }
-                Err(e) => {
+                Err(_e) => {
                     // Errors are acceptable for malformed paths
-                    #[cfg(debug_assertions)]
-                    if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                        eprintln!("Alternative interpretation test {i} failed (acceptable): {e}");
-                    }
                 }
             }
         }

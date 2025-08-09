@@ -293,11 +293,6 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 
-    #[cfg(debug_assertions)]
-    if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-        eprintln!("DEBUG: soft_canonicalize called with: {path:?}");
-    }
-
     // Handle empty path early (like std::fs::canonicalize)
     if path.as_os_str().is_empty() {
         return Err(io::Error::new(
@@ -382,19 +377,9 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             // If it's a symlink, try to resolve it using controlled chain resolution
             // This handles all symlink scenarios while avoiding system symlink depth issues
             if existing_prefix.is_symlink() {
-                #[cfg(debug_assertions)]
-                if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                    eprintln!("DEBUG: Found symlink at: {existing_prefix:?}");
-                }
-
                 // Handle symlinks with comprehensive chain resolution
                 match resolve_simple_symlink_chain(&existing_prefix) {
                     Ok(resolved) => {
-                        #[cfg(debug_assertions)]
-                        if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                            eprintln!("DEBUG: Symlink resolved to: {resolved:?}");
-                        }
-
                         // Update path and continue
                         existing_prefix = resolved;
                         continue;
@@ -407,11 +392,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             }
         } else if existing_prefix.is_symlink() {
             // Handle broken symlinks (exists() returns false but is_symlink() returns true)
-            #[cfg(debug_assertions)]
-            if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                eprintln!("DEBUG: Found broken symlink at: {existing_prefix:?}");
-            }
-
             match resolve_simple_symlink_chain(&existing_prefix) {
                 Ok(resolved) => {
                     // For broken symlinks, store the resolved base and break
@@ -444,11 +424,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // Build the final result
     let mut result = if let Some(symlink_base) = symlink_resolved_base {
         // We resolved a broken symlink chain - use that as base
-        #[cfg(debug_assertions)]
-        if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-            eprintln!("DEBUG: Using symlink_resolved_base: {symlink_base:?}");
-        }
-
         // Try to canonicalize the symlink base to handle macOS /var -> /private/var
         // This is a final attempt to ensure proper canonicalization
         if !symlink_base.exists() {
@@ -458,19 +433,9 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 
             while let Some(parent) = current.parent() {
                 if parent.exists() {
-                    #[cfg(debug_assertions)]
-                    if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                        eprintln!("DEBUG: Final canonicalization attempt on parent: {parent:?}");
-                    }
                     if let Ok(canonical_parent) = fs::canonicalize(parent) {
                         if let Ok(relative_part) = final_result.strip_prefix(parent) {
                             final_result = canonical_parent.join(relative_part);
-                            #[cfg(debug_assertions)]
-                            if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-                                eprintln!(
-                                    "DEBUG: Final canonicalized symlink base: {final_result:?}"
-                                );
-                            }
                             break;
                         }
                     }
@@ -484,11 +449,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     } else if existing_count > 0 {
         // Use the existing prefix, but ensure it's properly canonicalized
-        #[cfg(debug_assertions)]
-        if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-            eprintln!("DEBUG: Using existing_prefix: {existing_prefix:?}");
-        }
-
         // Try to canonicalize the existing prefix to ensure proper Windows path format
         if existing_prefix.exists() {
             fs::canonicalize(&existing_prefix).unwrap_or_else(|_| existing_prefix.clone())
@@ -511,10 +471,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     } else {
         // Nothing exists beyond the root
-        #[cfg(debug_assertions)]
-        if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-            eprintln!("DEBUG: Using raw existing_prefix: {existing_prefix:?}");
-        }
         existing_prefix.clone()
     };
 
@@ -523,10 +479,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         result.push(component);
     }
 
-    #[cfg(debug_assertions)]
-    if std::env::var("SOFT_CANONICALIZE_DEBUG").is_ok() {
-        eprintln!("DEBUG: Final result: {result:?}");
-    }
     Ok(result)
 }
 
