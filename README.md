@@ -12,7 +12,7 @@ A high-performance, pure Rust library for path canonicalization that works with 
 
 Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths even when components don't exist on the filesystem. This enables accurate path comparison, resolution of future file locations, and preprocessing paths before file creation.
 
-**🔬 Comprehensive test suite with 100+ tests ensuring 100% behavioral compatibility with std::fs::canonicalize for existing paths.**
+**🔬 Comprehensive test suite with 108 tests including std::fs::canonicalize compatibility tests, Python pathlib test suite adaptations, security penetration tests, and CVE validations.**
 
 ## Features
 
@@ -20,9 +20,10 @@ Unlike `std::fs::canonicalize()`, this library resolves and normalizes paths eve
 - **🌍 Cross-platform**: Windows, macOS, and Linux support  
 - **🔧 Zero dependencies**: Only uses std library
 - **🔒 Robust path handling**: Proper `..` and symlink resolution with cycle detection
-- **🛡️ Security tested**: Protection against CVE-2022-21658 and common path traversal attacks
+- **🛡️ Security tested**: Protection against CVE-2022-21658 and common path traversal attacks with 32 dedicated security tests
 - **🔍 Security monitoring**: Automated daily security audits via cargo-audit in CI/CD
-- **⚡ High Performance**: Optimized algorithm significantly outperforms naive implementations
+- **⚡ High Performance**: **2.0-2.7x faster than Python** with optimized PathResolver algorithm
+- **✅ Compatibility**: 100% behavioral compatibility with std::fs::canonicalize for existing paths
 
 ## What is Path Canonicalization?
 
@@ -91,12 +92,29 @@ This approach ensures you get the same results as the standard library for exist
 
 ## Performance & Compatibility
 
-- **Performance**: **1.67x faster than Python** on average (56-90% improvement range)
+- **Performance**: **2.0-2.7x faster than Python** on average (100-166% improvement range)
+- **Test Coverage**: **108 comprehensive tests** including:
+  - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility for existing paths
+  - **32 security penetration tests** covering CVE-2022-21658, path traversal attacks, and edge cases  
+  - **Python pathlib test suite adaptations** for cross-language validation
+  - **Platform-specific tests** for Windows, macOS, and Linux edge cases
+  - **Performance and stress tests** validating behavior under various conditions
 - **Time Complexity**: O(k) existing components (best: O(1), worst: O(n))
 - **Space Complexity**: O(n) component storage with optimized memory usage
 - **Cross-platform**: Windows (drive letters, UNC), Unix (symlinks)
-- **Comprehensive Testing**: 100+ tests including security audits, Python-inspired edge cases, and cross-platform validation
 - **100% Behavioral Compatibility**: Passes all std::fs::canonicalize tests for existing paths
+
+### Benchmark Results
+
+Our comprehensive benchmarking shows consistent performance improvements across different workloads:
+
+| Benchmark Type | Throughput (paths/s) | vs Python 3.12.4 | Improvement |
+|---------------|---------------------|-----------------|-------------|
+| Mixed Workload | 6,453 - 8,576 | 2.0x - 2.7x | 100% - 166% |
+| Existing Paths | 12,000 - 17,000 | 3.7x - 5.3x | 270% - 430% |
+| Non-existing Paths | 1,900 - 2,700 | 0.6x - 0.8x | Varies by complexity |
+
+*Benchmarks run on Windows 11 with mixed workloads including existing files, non-existing paths, and complex dot-dot traversals. See [benches/PERFORMANCE.md](benches/PERFORMANCE.md) for detailed analysis.*
 
 For detailed performance benchmarks and comparisons with Python's pathlib, see the [`benches/`](benches/) directory.
 
