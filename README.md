@@ -63,7 +63,7 @@ assert_eq!(
 
 ```toml
 [dependencies]
-soft-canonicalize = "0.2.0"
+soft-canonicalize = "0.2.1"
 ```
 
 ## How It Works
