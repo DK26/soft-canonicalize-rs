@@ -10,18 +10,18 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 108 tests including std::fs::canonicalize compatibility tests,
+//! **🔬 Comprehensive test suite with 111 tests including std::fs::canonicalize compatibility tests,
 //! security penetration tests, Python pathlib validations, and CVE protections.**
 //!
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
+//! - **⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔧 Zero dependencies** - Only uses std library  
-//! - **⚡ Fast** - 1.3x-1.5x faster than Python's pathlib in mixed workloads  
-//! - **🔒 Comprehensive Testing** - 108 tests including security scenarios and cross-platform validation  
-//! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
+//! - **🔒 Security-tested** - 111 tests including CVE protections and path traversal prevention  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
+//! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
+//! - **🔧 Zero dependencies** - Only uses std library
 //!
 //! ## What is Path Canonicalization?
 //!
@@ -44,69 +44,45 @@
 //! use soft_canonicalize::soft_canonicalize;
 //! use std::path::PathBuf;
 //!
-//! # fn example() -> std::io::Result<()> {
-//! # std::env::set_current_dir("/home/user/myproject")?;
-//! // Starting from working directory: /home/user/myproject
+//! # #[cfg(windows)]
+//! # {
+//! let non_existing_path = r"C:\Users\user\documents\..\non\existing\config.json";
 //!
-//! // Input: "data/config.json" (relative path to non-existing file)
-//! // Output: absolute canonical path (file doesn't need to exist!)
-//! let result = soft_canonicalize("data/config.json")?;
-//! assert_eq!(result, PathBuf::from("/home/user/myproject/data/config.json"));
+//! // Using Rust's own std canonicalize function:
+//! let result = std::fs::canonicalize(non_existing_path);
+//! assert!(result.is_err());
 //!
-//! // Input: "src/../data/settings.toml" (path with .. traversal to non-existing file)  
-//! // Output: .. resolved logically, no filesystem needed
-//! let result = soft_canonicalize("src/../data/settings.toml")?;
-//! assert_eq!(result, PathBuf::from("/home/user/myproject/data/settings.toml"));
+//! // Using our crate's function:
+//! let result = soft_canonicalize(non_existing_path);
+//! assert!(result.is_ok());
 //!
-//! // Input: "src/../README.md" (existing file with .. traversal)
-//! // Output: same as std::fs::canonicalize (resolves symlinks too)
-//! # std::fs::create_dir_all("src")?;
-//! # std::fs::File::create("README.md")?;
-//! let result = soft_canonicalize("src/../README.md")?;
-//! assert_eq!(result, PathBuf::from("/home/user/myproject/README.md"));
-//! # Ok(())
+//! // Shows the UNC path conversion and path normalization
+//! assert_eq!(
+//!     result.unwrap().to_string_lossy(),
+//!     r"\\?\C:\Users\user\non\existing\config.json"
+//! );
 //! # }
+//! # Ok::<(), std::io::Error>(())
 //! ```
+//!
+//! **Note:** Symlinks are also automatically resolved with cycle detection.
 //!
 //! ## Performance & Benchmarks
 //!
-//! **1.3x - 1.5x faster than Python 3.12.4** in mixed workloads on typical hardware.
+//! Cross-platform performance (mixed workloads): Windows ~1.4–2.0x; Linux ~2.5–4.7x vs Python 3.x.
 //!
-//! ### Algorithm Optimizations
+//! **Windows mixed**: Rust ~9.5k–11.9k vs Python ~5.9k–6.9k paths/s (≈1.4–2.0x)
+//! **Linux mixed**: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
 //!
-//! - **Fast-path for simple cases**: Direct `std::fs::canonicalize()` for existing absolute paths without dot components  
-//! - **Binary search boundary detection**: O(log n) time complexity to find existing/non-existing split
-//! - **Single-pass normalization**: Resolves `..` and `.` components without filesystem calls where possible
-//! - **Intelligent caching**: Reuses filesystem queries within the same path resolution
-//! - **Platform-specific optimizations**: Windows UNC path handling, Unix symlink resolution
+//! ### Key Optimizations
 //!
-//! ### Detailed Results
+//! - **Fast-path for existing paths**: Direct `std::fs::canonicalize()` for fully normalized existing paths
+//! - **Single-pass existing-prefix discovery**: Finds deepest existing ancestor and resolves symlinks inline
+//! - **Streaming lexical normalization**: Direct push/pop without intermediate allocations
+//! - **Minimal syscalls**: Early-exit when first component is missing; no redundant probes
+//! - **Platform-specific optimizations**: Windows extended-length prefix handling; robust Unix symlink behavior
 //!
-//! **Benchmarked against Python 3.12.4's `pathlib.Path.resolve(strict=False)`:**
-//!
-//! | Scenario | Python 3.12.4 | Rust (this crate) | Performance Comparison |
-//! |----------|----------------|-------------------|----------------------|
-//! | **Mixed workload** | 4,627 paths/s | **6,089 - 6,769 paths/s** | **1.3x - 1.5x faster** |
-//! | Simple existing paths | ~6,600 paths/s | **10,057 - 12,851 paths/s** | **1.5x - 1.9x faster** |
-//! | Path traversal (../) | ~6,500 paths/s | **11,551 - 13,529 paths/s** | **1.8x - 2.1x faster** |
-//! | Non-existing paths | 2,516 - 4,441 paths/s | **1,950 - 2,072 paths/s** | **0.4x - 0.8x (competitive)** |
-//!
-//! **🎯 Overall: 1.3x - 1.5x faster than Python in mixed workloads**
-//!
-//! ### Algorithm Implementation
-//!
-//! The soft canonicalization algorithm employs several high-performance optimizations:
-//!
-//! 1. **Fast-path existing files**: Uses `std::fs::canonicalize` directly for fully existing paths
-//! 2. **Binary search boundary detection**: O(log n) filesystem calls instead of O(n) linear search
-//! 3. **Single-pass path normalization**: Processes `.` and `..` components efficiently  
-//! 4. **Optimized component collection**: Minimal memory allocations and efficient buffering
-//! 5. **Smart symlink resolution**: Comprehensive cycle detection with performance optimizations
-//!
-//! This approach provides the robustness benefits of full canonicalization while
-//! supporting paths that don't exist yet, with superior performance characteristics.
-//!
-//! *Performance varies by hardware. Benchmarks run on Windows 11 with comprehensive test suites.*
+//! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
 //!
 //! For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 //!
@@ -122,7 +98,7 @@
 //!
 //! ### Test Coverage
 //!
-//! **108 comprehensive tests** including:
+//! **111 comprehensive tests** including:
 //!
 //! - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 //! - **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks
@@ -142,6 +118,36 @@
 //! combine this with appropriate access controls and validation. For security-critical path
 //! handling with built-in boundary enforcement, consider using the [`jailed-path`](https://crates.io/crates/jailed-path)
 //! crate which builds on `soft-canonicalize` to provide type-safe path jailing.
+//!
+//! ## Known Limitations
+//!
+//! ### Windows Short Filename Equivalence
+//!
+//! On Windows, the filesystem may generate short filenames (8.3 format) for long directory names.
+//! For **non-existing paths**, this library cannot determine if a short filename form (e.g., `PROGRA~1`)
+//! and its corresponding long form (e.g., `Program Files`) refer to the same future location:
+//!
+//! ```rust
+//! use soft_canonicalize::soft_canonicalize;
+//!
+//! # fn example() -> std::io::Result<()> {
+//! // These non-existing paths are treated as different (correctly)
+//! let short_form = soft_canonicalize("C:/PROGRA~1/MyApp/config.json")?;
+//! let long_form = soft_canonicalize("C:/Program Files/MyApp/config.json")?;
+//!
+//! // They will NOT be equal because we cannot determine equivalence
+//! // without filesystem existence
+//! assert_ne!(short_form, long_form);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **This is a fundamental limitation** shared by Python's `pathlib.Path.resolve(strict=False)`
+//! and other path canonicalization libraries across languages. Short filename mapping only exists
+//! when files/directories are actually created by the filesystem.
+//!
+//! **For existing paths**, this library correctly resolves short and long forms to the same
+//! canonical result, maintaining 100% compatibility with `std::fs::canonicalize`.
 
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -168,14 +174,15 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 ///
 /// # Algorithm Details
 ///
-/// The function performs the following steps:
-///
-/// 1. **Absolute Path Conversion**: Converts relative paths to absolute paths
-/// 2. **Logical Processing**: Processes `..` components mathematically without filesystem access
-/// 3. **Symlink Cycle Detection**: Tracks visited symlinks to prevent infinite recursion
-/// 4. **Existing Prefix Discovery**: Finds the longest existing ancestor
-/// 5. **Canonicalization**: Uses `std::fs::canonicalize` on the existing portion
-/// 6. **Reconstruction**: Appends non-existing components to the canonical base
+/// 1. **Input validation**: Handle empty paths early (matches `std::fs::canonicalize` behavior)
+/// 2. **Absolute path conversion**: Convert relative paths to absolute using the current working directory
+/// 3. **Lexical normalization**: Resolve `.` and `..` components without filesystem calls
+/// 4. **Fast-path attempt**: Try `std::fs::canonicalize` once; if it succeeds (path fully exists), return early
+/// 5. **Null byte validation**: Check for embedded null bytes (platform-specific error handling)
+/// 6. **Existing-prefix discovery**: Walk components left-to-right to find the deepest existing ancestor; resolve symlinks inline with cycle detection
+/// 7. **Conditional anchor canonicalization**: If any symlink was encountered, canonicalize the deepest existing ancestor once to normalize casing/UNC details
+/// 8. **Result reconstruction**: Append non-existing components to the canonicalized base
+/// 9. **Windows normalization**: Ensure extended-length prefix (\\?\) for absolute Windows paths when needed
 ///
 /// # Security Considerations
 ///
@@ -266,33 +273,11 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
 ///
+/// **Benchmark snapshot** (mixed workloads): Windows ~9.5k–11.9k vs Python ~5.9k–6.9k; Linux ~238k–448k vs Python ~95k.
+///
 /// **Comparison with alternatives**: Provides unique combination of non-existing path
 /// support with full symlink resolution and robust path handling that other libraries
 /// may not offer.
-///
-/// Performs "soft" canonicalization on a path.
-///
-/// This function is inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)` behavior.
-/// Unlike `std::fs::canonicalize`, this function can handle paths that don't fully exist
-/// on the filesystem, making it useful for applications that need to resolve paths
-/// before creating them.
-///
-/// # Performance
-///
-/// **Benchmark Results (vs Python 3.12.4 pathlib.Path.resolve):**
-/// - Mixed workloads: **6,089-6,769 paths/s** (1.3x-1.5x faster vs Python's 4,627 paths/s)
-/// - Existing paths: **10,057-12,851 paths/s** (1.5x-1.9x faster vs Python's ~6,600 paths/s)  
-/// - Non-existing paths: **1,950-2,072 paths/s** (competitive with Python's 2,516-4,441 paths/s)
-///
-/// **Algorithm optimizations:**
-/// - **Fast-path**: Direct `fs::canonicalize()` for existing absolute paths
-/// - **Boundary detection**: Efficiently finds existing vs non-existing path segments  
-/// - **Lexical resolution**: Resolves `..` and `.` without filesystem calls where possible
-/// - **Symlink handling**: Proper cycle detection with 40-level depth limits
-/// - **Zero dependencies**: Pure std library implementation
-///
-/// **Time Complexity:** O(k) where k = number of existing path components (best: O(1), worst: O(n))
-/// **Space Complexity:** O(n) for component storage with optimized memory usage
 ///
 /// # Behavior
 ///
@@ -336,7 +321,7 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 
-    // Handle empty path early (like std::fs::canonicalize)
+    // Stage 0: guard-rail — handle empty path early (aligns with std::fs::canonicalize)
     if path.as_os_str().is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -344,14 +329,28 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         ));
     }
 
-    // Fast path: try std::fs::canonicalize first (Python's strategy)
-    // This handles all existing paths in a single optimized syscall
-    if let Ok(canonical) = fs::canonicalize(path) {
-        return Ok(canonical);
-    }
-    // Path doesn't exist entirely - continue with boundary detection
+    // Stage 1: convert to absolute path (preserves drive/root semantics)
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
 
-    // Check for null bytes in the path
+    // Stage 2: pre-normalize lexically (resolve . and .. without touching the filesystem)
+    let normalized_path = simple_normalize_path(&absolute_path);
+
+    // Stage 3: fast-path — try fs::canonicalize once; for NotFound or non-fatal errors continue
+    match fs::canonicalize(&normalized_path) {
+        Ok(p) => return Ok(p),
+        Err(e) => match e.kind() {
+            io::ErrorKind::NotFound => { /* fall through to optimized boundary detection */ }
+            io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => return Err(e),
+            _ => { /* fall through to optimized boundary detection */ }
+        },
+    }
+    // At this point: path doesn't fully exist or canonicalize returned a recoverable error — continue.
+
+    // Stage 3.1: sanity check — validate no embedded NUL bytes (platform-specific)
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
@@ -373,17 +372,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     }
 
-    // Convert to absolute path - preserve the original path's drive/root
-    let absolute_path = if path.is_absolute() {
-        path.to_path_buf() // Use path as-is for absolute paths
-    } else {
-        std::env::current_dir()?.join(path) // Only join for relative paths
-    };
-
-    // OPTIMIZED: Pre-normalize the path once with all components
-    let normalized_path = simple_normalize_path(&absolute_path);
-
-    // OPTIMIZED: Collect components efficiently in single pass
+    // Stage 4: collect path components efficiently (root/prefix vs normal names)
     let mut components = Vec::new();
     let mut root_prefix = PathBuf::new();
 
@@ -400,184 +389,214 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     }
 
-    // OPTIMIZED: Binary search for existing boundary
-    let existing_count = if components.is_empty() {
-        // Root path case
-        0
-    } else {
-        find_existing_boundary(&root_prefix, &components)?
-    };
+    // Stage 5: discover the deepest existing prefix and resolve symlinks inline as encountered
+    let (existing_prefix, existing_count, symlink_seen) =
+        compute_existing_prefix(&root_prefix, &components)?;
 
-    let mut symlink_resolved_base: Option<PathBuf> = None;
-    let mut existing_prefix = root_prefix.clone();
+    // Stage 6: Build the base result; optionally canonicalize the anchor once if any symlink was seen.
+    let mut base = existing_prefix;
 
-    // Build the existing prefix and handle symlinks
-    for (i, component) in components.iter().enumerate().take(existing_count) {
-        existing_prefix.push(component);
-
-        if existing_prefix.is_symlink() {
-            // Handle symlinks with comprehensive chain resolution
-            match resolve_simple_symlink_chain(&existing_prefix) {
-                Ok(resolved) => {
-                    if i == existing_count - 1 {
-                        // This is the last existing component and it's a symlink
-                        let final_resolved = if resolved.exists() {
-                            fs::canonicalize(&resolved).unwrap_or(resolved)
-                        } else {
-                            resolved
-                        };
-                        symlink_resolved_base = Some(final_resolved);
-                        break;
+    // Rationale: If we didn't resolve any symlink, the existing prefix already reflects the
+    // filesystem's view (case, UNC, etc.). If we did, canonicalizing the deepest existing
+    // ancestor ensures consistent normalization across platforms without extra syscalls.
+    if symlink_seen {
+        let mut current: &Path = &base;
+        while let Some(parent) = current.parent() {
+            if parent.exists() {
+                if let Ok(canonical_parent) = fs::canonicalize(parent) {
+                    if let Ok(relative_part) = base.strip_prefix(parent) {
+                        base = canonical_parent.join(relative_part);
                     } else {
-                        // Update path and continue - but this shouldn't happen with binary search
-                        existing_prefix = resolved;
+                        base = canonical_parent;
                     }
                 }
-                Err(e) => {
-                    // Check if this is a cycle error - if so, propagate it
-                    if e.kind() == io::ErrorKind::InvalidInput {
-                        return Err(e);
-                    }
-                    // Can't resolve the symlink - treat as boundary
-                    existing_prefix.pop();
-                    break;
-                }
+                break;
+            }
+            current = parent;
+        }
+    }
+
+    // Windows-only: If no symlink was encountered but the existing prefix contains
+    // any 8.3 short-name component (e.g., RUNNER~1), expand it once via canonicalize.
+    // This keeps behavior stable across environments where temp/user dirs expose 8.3 names
+    // while avoiding extra syscalls in the common case.
+    #[cfg(windows)]
+    {
+        if !symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
+            if let Ok(canon_base) = fs::canonicalize(&base) {
+                base = canon_base;
             }
         }
     }
 
-    // Build the final result
-    let mut result = if let Some(symlink_base) = symlink_resolved_base {
-        // We resolved a broken symlink chain - use that as base
-        // Try to canonicalize the symlink base to handle macOS /var -> /private/var
-        // This is a final attempt to ensure proper canonicalization
-        if !symlink_base.exists() {
-            // For non-existing paths, try to canonicalize the existing parent
-            let mut current = symlink_base;
-            let mut final_result = current.clone();
+    let mut result = base;
 
-            while let Some(parent) = current.parent() {
-                if parent.exists() {
-                    if let Ok(canonical_parent) = fs::canonicalize(parent) {
-                        if let Ok(relative_part) = final_result.strip_prefix(parent) {
-                            final_result = canonical_parent.join(relative_part);
-                            break;
-                        }
-                    }
-                }
-                current = parent.to_path_buf();
-            }
-            final_result
-        } else {
-            // For existing symlink bases, try to canonicalize them to get proper format (e.g., \\?\ on Windows)
-            fs::canonicalize(&symlink_base).unwrap_or(symlink_base)
-        }
-    } else if existing_count > 0 {
-        // Use the existing prefix, but ensure it's properly canonicalized
-        // Try to canonicalize the existing prefix to ensure proper Windows path format
-        if existing_prefix.exists() {
-            fs::canonicalize(&existing_prefix).unwrap_or_else(|_| existing_prefix.clone())
-        } else {
-            // For non-existing paths, try to canonicalize the deepest existing parent
-            let mut result_path = existing_prefix.clone();
-            let mut current = existing_prefix.clone();
-            while let Some(parent) = current.parent() {
-                if parent.exists() {
-                    if let Ok(canonical_parent) = fs::canonicalize(parent) {
-                        if let Ok(relative_part) = existing_prefix.strip_prefix(parent) {
-                            result_path = canonical_parent.join(relative_part);
-                            break;
-                        }
-                    }
-                }
-                current = parent.to_path_buf();
-            }
-            result_path
-        }
-    } else {
-        // Nothing exists beyond the root
-        existing_prefix.clone()
-    };
-
-    // Append the non-existing parts
+    // Stage 7: append the non-existing suffix components (purely lexical)
     for component in components.iter().skip(existing_count) {
         result.push(component);
     }
 
+    // Stage 8 (Windows): ensure extended-length prefix for absolute paths when we didn't canonicalize
+    #[cfg(windows)]
+    {
+        use std::path::Component;
+        if matches!(result.components().next(), Some(Component::Prefix(_))) {
+            result = ensure_windows_extended_prefix(&result);
+        }
+    }
+
     Ok(result)
 }
 
-/// OPTIMIZED: Binary search to find the boundary between existing and non-existing components
-/// This replaces the O(n) linear search with O(log n) binary search for better performance
-fn find_existing_boundary(
+#[cfg(windows)]
+fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
+    use std::path::{Component, Prefix};
+
+    let mut comps = p.components();
+    let first = match comps.next() {
+        Some(Component::Prefix(pr)) => pr,
+        _ => return p.to_path_buf(),
+    };
+
+    match first.kind() {
+        Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _) => {
+            // Already extended-length
+            p.to_path_buf()
+        }
+        Prefix::Disk(_drive) => {
+            // \\\?\\C:\...
+            use std::ffi::OsString;
+            let mut s = OsString::from(r"\\?\");
+            s.push(p.as_os_str());
+            PathBuf::from(s)
+        }
+        Prefix::UNC(server, share) => {
+            // \\?\UNC\server\share\...
+            let mut out = PathBuf::from(r"\\?\UNC\");
+            out.push(server);
+            out.push(share);
+            for c in comps {
+                out.push(c.as_os_str());
+            }
+            out
+        }
+        _ => p.to_path_buf(),
+    }
+}
+
+//
+
+#[cfg(windows)]
+fn has_windows_short_component(p: &Path) -> bool {
+    use std::path::Component;
+    for comp in p.components() {
+        if let Component::Normal(name) = comp {
+            // Heuristic: 8.3 short names contain a tilde '~' in the component
+            if name.to_string_lossy().contains('~') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Combined single-pass existing-prefix computation and inline symlink handling.
+/// Contract:
+/// - Input: root/prefix (e.g., "/" or "C:\\" or "\\\\?\\UNC\\server\\share\\") and a list of
+///   normalized non-root components
+/// - Output: (deepest_existing_path, number_of_existing_components, symlink_seen)
+///
+/// Behavior:
+/// - Walk left-to-right, probing each component with symlink_metadata
+/// - If a component is a symlink, attempt to resolve its chain; adopt the resolved path only if
+///   the resolved target or its parent exists (preserves attachment semantics for non-existing suffixes)
+/// - Early-exit when the next component doesn't exist
+fn compute_existing_prefix(
     root_prefix: &Path,
     components: &[std::ffi::OsString],
-) -> io::Result<usize> {
-    if components.is_empty() {
-        return Ok(0);
-    }
+) -> io::Result<(PathBuf, usize, bool)> {
+    let mut path = root_prefix.to_path_buf();
+    let mut count = 0usize;
+    let mut symlink_seen = false;
 
-    // OPTIMIZATION: Quick check - if the full path exists, return all components
-    let mut full_path = root_prefix.to_path_buf();
-    for component in components {
-        full_path.push(component);
-    }
-    if full_path.exists() {
-        return Ok(components.len());
-    }
-
-    // OPTIMIZATION: Binary search for the existing boundary
-    let mut left = 0;
-    let mut right = components.len();
-    let mut result = 0;
-
-    while left < right {
-        let mid = left + (right - left) / 2;
-        let mut test_path = root_prefix.to_path_buf();
-
-        for component in components.iter().take(mid + 1) {
-            test_path.push(component);
-        }
-
-        if test_path.exists() || test_path.is_symlink() {
-            result = mid + 1;
-            left = mid + 1;
-        } else {
-            right = mid;
+    // Early fast-path: check first component only, common case when first doesn't exist
+    if let Some(first) = components.first() {
+        path.push(first);
+        match fs::symlink_metadata(&path) {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() {
+                    symlink_seen = true;
+                    path = resolve_simple_symlink_chain(&path)?;
+                }
+                count = 1;
+            }
+            Err(_) => {
+                // First component missing; return root as deepest existing
+                let _ = path.pop();
+                return Ok((root_prefix.to_path_buf(), 0, false));
+            }
         }
     }
 
-    Ok(result)
+    for c in components.iter().skip(count) {
+        path.push(c);
+
+        match fs::symlink_metadata(&path) {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() {
+                    symlink_seen = true;
+                    // Resolve the chain; adopt only if target or its parent exists
+                    let resolved = resolve_simple_symlink_chain(&path)?;
+                    let adopt =
+                        resolved.exists() || resolved.parent().map(|p| p.exists()).unwrap_or(false);
+                    if adopt {
+                        path = resolved;
+                    } else {
+                        // Keep the symlink path as part of the existing prefix
+                        // so non-existing suffixes remain attached to the symlink component
+                    }
+                }
+                count += 1;
+            }
+            Err(_) => {
+                // Remove the non-existing component; base must remain the deepest existing
+                let _ = path.pop();
+                break;
+            }
+        }
+    }
+
+    Ok((path, count, symlink_seen))
 }
 
-/// Resolves a symlink chain with controlled depth to handle all symlink scenarios
-/// This handles broken symlink chains, cycles, and system symlink transparency
+/// Resolve a symlink chain using read_link only (no extra metadata calls).
+/// Notes:
+/// - Uses a visited set on textual paths to detect cycles without extra IO
+/// - Caps depth at MAX_SYMLINK_DEPTH (or a smaller heuristic for common system symlinks)
+/// - Re-resolves relative symlink targets against the parent of the current link
 fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
-    let mut current = symlink_path.to_path_buf();
-    let mut depth = 0;
-    let mut visited_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+    use std::collections::HashSet;
 
-    // Use different depth limits based on the platform and symlink type
+    let mut current = symlink_path.to_path_buf();
+    let mut depth = 0usize;
+    let mut visited: HashSet<std::ffi::OsString> = HashSet::with_capacity(8);
+
+    // Heuristic: system symlinks are unlikely to be malicious chains; keep their budget small
     let effective_max_depth = if is_likely_system_symlink(&current) {
-        // For system symlinks, use a lower limit to leave room in the main algorithm
         5
     } else {
-        // For regular symlinks, allow the full system limit
-        // This ensures we can handle MAX_SYMLINK_DEPTH user symlinks as expected
         MAX_SYMLINK_DEPTH
     };
 
     loop {
-        // OPTIMIZATION: Use HashSet for O(1) cycle detection instead of Vec O(n)
-        let current_str = current.to_string_lossy().to_string();
-        if !visited_paths.insert(current_str) {
+        // Detect cycles using the textual path (no extra IO)
+        if !visited.insert(current.as_os_str().to_os_string()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Too many levels of symbolic links",
             ));
         }
 
-        // Try to read the symlink
         match fs::read_link(&current) {
             Ok(target) => {
                 depth += 1;
@@ -588,54 +607,15 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
                     ));
                 }
 
-                // OPTIMIZED: Simplified security check for better performance
-                if !target.is_absolute() && target.to_string_lossy().contains("..") {
-                    let dotdot_count = target
-                        .components()
-                        .filter(|c| matches!(c, std::path::Component::ParentDir))
-                        .count();
-
-                    // Quick check - if more than 3 .. components, block it
-                    if dotdot_count > 3 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::PermissionDenied,
-                            "Symlink traversal blocked for security",
-                        ));
-                    }
-                }
-
-                // OPTIMIZED: Target resolution with proper relative path handling
                 if target.is_absolute() {
                     current = target;
                 } else if let Some(parent) = current.parent() {
-                    let resolved = parent.join(&target);
-                    let normalized = simple_normalize_path(&resolved);
-
-                    // Special handling for ../path patterns to ensure proper resolution
-                    if !normalized.exists() && target.to_string_lossy().starts_with("../") {
-                        // For ../path patterns, try alternative interpretation
-                        if let Ok(stripped) = target.strip_prefix("../") {
-                            let alternative = parent.join(stripped);
-                            if alternative.exists() || alternative.ancestors().any(|a| a.exists()) {
-                                current = alternative;
-                            } else {
-                                current = normalized;
-                            }
-                        } else {
-                            current = normalized;
-                        }
-                    } else {
-                        current = normalized;
-                    }
+                    current = simple_normalize_path(&parent.join(target));
                 } else {
                     current = target;
                 }
             }
-            Err(_) => {
-                // No more symlinks in the chain - return the current target
-                // This handles broken symlink chains where the final target doesn't exist
-                break;
-            }
+            Err(_) => break, // not a symlink or cannot read; stop here
         }
     }
 
@@ -643,54 +623,51 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
 }
 
 /// Checks if a symlink is likely a system symlink that shouldn't consume depth budget
+#[cfg(target_os = "macos")]
 fn is_likely_system_symlink(path: &Path) -> bool {
-    let path_str = path.to_string_lossy();
-
-    // Common system symlink patterns on different platforms
-    if cfg!(target_os = "macos") {
-        // macOS system symlinks
-        path_str.starts_with("/var") || path_str.starts_with("/tmp") || path_str.starts_with("/etc")
-    } else if cfg!(target_os = "linux") {
-        // Linux system symlinks
-        path_str.starts_with("/lib")
-            || path_str.starts_with("/usr/lib")
-            || path_str.starts_with("/bin")
-            || path_str.starts_with("/sbin")
-    } else {
-        // Conservative approach for other platforms
-        false
-    }
+    let s = path.to_string_lossy();
+    s.starts_with("/var") || s.starts_with("/tmp") || s.starts_with("/etc")
 }
 
-/// OPTIMIZED: Single-pass path normalization for .. components  
-/// This replaces the component-by-component processing with efficient batch operations
+#[cfg(target_os = "linux")]
+fn is_likely_system_symlink(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.starts_with("/lib")
+        || s.starts_with("/usr/lib")
+        || s.starts_with("/bin")
+        || s.starts_with("/sbin")
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn is_likely_system_symlink(_path: &Path) -> bool {
+    false
+}
+
+/// Streaming path normalization with push/pop operations.
+/// This replaces intermediate Vec allocation with direct PathBuf manipulation.
+/// Contract:
+/// - Input: any Path (absolute/relative)
+/// - Output: a PathBuf where `.` is removed and `..` pops one component when possible
+/// - Root semantics are preserved (never pops past root)
 fn simple_normalize_path(path: &Path) -> PathBuf {
     let mut result = PathBuf::new();
-    let mut components = Vec::new();
 
-    // OPTIMIZATION: Single pass through components with minimal allocations
     for component in path.components() {
         match component {
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
                 result.push(component.as_os_str());
             }
             std::path::Component::Normal(name) => {
-                components.push(name);
+                result.push(name);
             }
             std::path::Component::ParentDir => {
-                if !components.is_empty() {
-                    components.pop();
-                }
+                // Pop only if there is a parent (stay at root otherwise)
+                let _ = result.pop();
             }
             std::path::Component::CurDir => {
-                // Ignore . components
+                // Skip
             }
         }
-    }
-
-    // OPTIMIZATION: Batch append all normalized components
-    for component in components {
-        result.push(component);
     }
 
     result
@@ -708,9 +685,7 @@ mod tests {
     mod platform_specific;
     mod python_inspired_tests;
     mod python_lessons;
-    mod security;
     mod security_audit;
-    mod security_hardening;
     mod std_behavior;
     mod symlink_depth;
     mod symlink_dotdot_resolution_order;

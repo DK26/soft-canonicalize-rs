@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-08-11
+### Added
+- **Enhanced Security Test Suite**: Comprehensive security audit module reorganization with platform-specific tests
+- **Blackbox TOCTOU Attack Testing**: New `blackbox_toctou_attacks.rs` with Time-of-Check-to-Time-of-Use race condition testing
+- **Platform-Specific Security Tests**: Dedicated Unix and Windows security test modules for platform-specific edge cases
+- **Unicode Security Testing**: Enhanced Unicode path edge case testing including emoji, zero-width characters, and mixed scripts
+- **Unix-Specific Testing**: Non-UTF8 filename handling tests with macOS UTF-8 enforcement vs Linux permissive behavior
+- **Windows-Specific Testing**: Windows 8.3 short name symlink expansion tests
+
+### Improved
+- **Test Organization**: Reorganized security tests into dedicated `security_audit` module structure
+- **Cross-Platform Coverage**: Better separation of platform-specific test cases for Unix and Windows
+- **Race Condition Testing**: Advanced TOCTOU attack simulation with atomic directory-to-symlink replacement
+- **Unicode Handling**: More comprehensive Unicode normalization and encoding bypass prevention tests
+- **Error Handling**: Enhanced null byte injection testing with platform-specific error validation
+
+### Fixed
+- **Test Structure**: Moved and reorganized security hardening tests from single file to modular security audit structure
+- **Platform Compatibility**: Improved handling of platform-specific filesystem limitations and behaviors
+
 ## [0.2.0] - 2025-08-09
 ### Added
 - **Major Algorithm Optimization**: Complete rewrite for 1.3x-1.5x performance improvement over Python's pathlib

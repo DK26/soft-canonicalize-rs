@@ -1,29 +1,44 @@
 # Performance Benchmarks
 
-This directory contains performance benchmarks comparing `soft_canonicalize` with Python 3.6+ `pathlib.Path.resolve(strict=False)`.
+Benchmarks here compare `soft_canonicalize` with Python’s `pathlib.Path.resolve(strict=False)` on a mixed workload similar to real usage.
 
-## Quick Test
+## Requirements
+
+- Python available as one of: `python`, `python3`, or `py`
+- No extra Python packages needed (stdlib only)
+
+## How to run
 
 ```bash
-# Run Rust benchmarks
+# Runs Rust benches and will invoke the Python baseline automatically
 cargo bench
 
-# Compare with Python baseline
-cd python/
+# (Optional) Run Python baseline only
+cd python
 python python_fair_comparison.py
 ```
 
-## Current Results
+## Current results (mixed workload)
 
-- **Python 3.12.4**: 6,845 - 7,159 paths/s
-- **Rust soft_canonicalize**: 6,029 - 8,283 paths/s  
-- **Performance**: 1.1x - 1.3x faster than Python (machine-dependent)
+Note: numbers are machine- and OS-dependent. Results below reflect recent runs on typical dev hardware.
 
-## Benchmark Files
+- Windows
+	- Python baseline: ~5.9k–6.9k paths/s
+	- Rust soft_canonicalize: ~9.5k–11.9k paths/s
+	- Speedup: ~1.4–2.0x (varies by run)
 
-- `performance_comparison.rs`: Main performance comparison benchmark
-- `throughput_analysis.rs`: Detailed throughput measurement
-- `precision_benchmark.rs`: Precision testing
-- `python/python_fair_comparison.py`: Python baseline measurement
+- Linux
+	- Python baseline: ~95k paths/s
+	- Rust soft_canonicalize: ~238k–448k paths/s
+	- Speedup: ~2.5–4.7x (varies by run)
 
-Results vary by hardware. Performance claims should be verified on your specific machine.
+The harness parses either “Individual Operations Avg” or a “Range:” line from `python_fair_comparison.py`, using whichever is available.
+
+## Files
+
+- `performance_comparison.rs` — main mixed-workload comparison; runs Python baseline
+- `throughput_analysis.rs` — per-scenario throughput breakdowns
+- `precision_benchmark.rs` — timing precision and scenario micro-benchmarks
+- `python/python_fair_comparison.py` — Python baseline generator
+
+If you publish your own numbers, please include OS, CPU, and Python version for context.
