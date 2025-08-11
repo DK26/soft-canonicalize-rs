@@ -274,6 +274,7 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 ///   - Worst: O(n + s) when the entire path exists and/or deep symlinks are present
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
+///
 /// **Benchmark snapshot** (mixed workloads): Windows ~9.5k–11.9k vs Python ~5.9k–6.9k; Linux ~238k–448k vs Python ~95k.
 ///
 /// **Comparison with alternatives**: Provides unique combination of non-existing path
