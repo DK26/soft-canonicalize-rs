@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2025-08-12
+### Improved
+- **Documentation Restructuring**: Major reorganization of README.md and lib.rs documentation for better clarity and user experience
+- **Quick Start Section**: Moved installation and basic usage examples to the top of documentation for easier onboarding
+- **Algorithm Documentation**: Enhanced technical documentation with detailed time complexity analysis and optimization explanations
+- **Performance Information**: Consolidated and improved performance benchmarking information with clearer presentation
+- **Security Documentation**: Better organization of security features and vulnerability testing information
+- **Code Example Improvements**: Simplified and streamlined code examples for better readability
+
+### Changed
+- **Documentation Structure**: Reorganized content flow to prioritize practical usage over technical details
+- **Technical Details**: Moved detailed algorithm explanations to more appropriate sections in the documentation
+
 ## [0.2.1] - 2025-08-11
 ### Added
 - **Enhanced Security Test Suite**: Comprehensive security audit module reorganization with platform-specific tests

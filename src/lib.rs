@@ -10,7 +10,7 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 111 tests including std::fs::canonicalize compatibility tests,
+//! **🔬 Comprehensive test suite with 113 tests including std::fs::canonicalize compatibility tests,
 //! security penetration tests, Python pathlib validations, and CVE protections.**
 //!
 //! ## Why Use This?
@@ -18,27 +18,25 @@
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
 //! - **⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Security-tested** - 111 tests including CVE protections and path traversal prevention  
+//! - **🔒 Security-tested** - 113 tests including CVE protections and path traversal prevention  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
 //! - **🔧 Zero dependencies** - Only uses std library
 //!
-//! ## What is Path Canonicalization?
+//! For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 //!
-//! Path canonicalization converts paths to their canonical (standard) form, enabling
-//! accurate comparison and ensuring two different path representations that point to
-//! the same location are recognized as equivalent. This is essential for:
+//! > Performance varies by hardware and OS/filesystem.
+//! > See the bench outputs for per-scenario numbers.
 //!
-//! - **Path Comparison**: Determining if two paths refer to the same file or directory
-//! - **Deduplication**: Avoiding duplicate operations on the same file accessed via different paths
-//! - **Build Systems**: Resolving output paths and dependencies accurately
-//! - **Future Path Planning**: Computing paths for files that will be created later
-//! - **Security Applications**: Preventing path traversal attacks and ensuring paths stay within intended boundaries
+//! ## Quick Start
 //!
-//! The "soft" aspect means we can canonicalize paths even when the target doesn't exist yet -
-//! extending traditional canonicalization to work with planned or future file locations.
+//! ### Cargo.toml
+//! ```toml
+//! [dependencies]
+//! soft-canonicalize = "0.2.2"
+//! ```
 //!
-//! ## Example
+//! ### Code Example
 //!
 //! ```rust
 //! use soft_canonicalize::soft_canonicalize;
@@ -65,7 +63,51 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! **Note:** Symlinks are also automatically resolved with cycle detection.
+//! ## How We Canonicalize
+//!
+//! This library implements an optimized, single-pass path resolution algorithm with the following stages:
+//!
+//! 1. **Input validation**: Handle empty paths early (matches `std::fs::canonicalize` behavior) — *O(1)*
+//! 2. **Absolute path conversion**: Convert relative paths to absolute using the current working directory — *O(n)* (path join)
+//! 3. **Streaming lexical normalization**: Resolve `.` and `..` components without filesystem calls using direct push/pop without intermediate allocations — *O(n)*
+//! 4. **Fast-path attempt**: Try `std::fs::canonicalize` once for fully normalized existing paths; if it succeeds (path fully exists), return early — *O(s)* where s is symlink depth
+//! 5. **Null byte validation**: Check for embedded null bytes (platform-specific error handling) — *O(n)*
+//! 6. **Single-pass existing-prefix discovery**: Walk components left-to-right to find the deepest existing ancestor with minimal syscalls (early-exit when first component is missing); resolve symlinks inline with cycle detection — *O(k + s)* where k is existing components, s is symlink depth
+//! 7. **Conditional anchor canonicalization**: If any symlink was encountered, canonicalize the deepest existing ancestor once to normalize casing/UNC details — *O(k)*
+//! 8. **Result reconstruction**: Append non-existing components to the canonicalized base — *O(m)* where m is non-existing components
+//! 9. **Platform-specific normalization**: Ensure extended-length prefix (\\?\) for absolute Windows paths when needed; robust Unix symlink behavior — *O(1)*
+//!
+//! **Overall Time Complexity**: Overall work is dominated by lexical normalization plus filesystem probes.
+//! - End-to-end: *O(n + s)* where n is total components processed lexically and s is symlink depth
+//! - Filesystem probes only: *O(k + s)* where k is existing components inspected
+//! - **Best case (filesystem)**: *O(1)* probes when the first component doesn't exist (still incurs lexical *O(n)*)
+//! - **Worst case**: *O(n + s)* when the entire path exists and/or deep symlinks are present
+//! - **Average case**: *O(k)* where k is typically much smaller than total components
+//!
+//! ### Test Coverage
+//!
+//! **113 comprehensive tests** including:
+//!
+//! - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
+//! - **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
+//! - **Python pathlib test suite adaptations** for cross-language validation
+//! - **Platform-specific tests** for Windows, macOS, and Linux edge cases
+//! - **Performance and stress tests** validating behavior under various conditions
+//!
+//! ### 🔍 Tested Against Known Vulnerabilities
+//!
+//! Our comprehensive security test suite specifically validates protection against real-world vulnerabilities found in other path handling libraries:
+//!
+//! - **CVE-2022-21658 Race Conditions**: Tests against Time-of-Check-Time-of-Use (TOCTOU) attacks where symlinks are replaced between canonicalization and file access
+//! - **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths
+//! - **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)
+//! - **Case Sensitivity Bypasses**: Tests on case-insensitive filesystems to prevent case-based security bypasses
+//! - **Symlink Jail Escapes**: Comprehensive testing of symlinked directory attacks and nested symlink chains
+//! - **NTFS Alternate Data Streams**: Windows-specific tests for ADS attack vectors that can hide malicious content
+//! - **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
+//! - **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
+//!
+//! These tests ensure that `soft_canonicalize` doesn't inherit the security vulnerabilities that have affected other path canonicalization libraries, giving you confidence in production security-critical applications.
 //!
 //! ## Performance & Benchmarks
 //!
@@ -74,50 +116,9 @@
 //! **Windows mixed**: Rust ~9.5k–11.9k vs Python ~5.9k–6.9k paths/s (≈1.4–2.0x)
 //! **Linux mixed**: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
 //!
-//! ### Key Optimizations
-//!
-//! - **Fast-path for existing paths**: Direct `std::fs::canonicalize()` for fully normalized existing paths
-//! - **Single-pass existing-prefix discovery**: Finds deepest existing ancestor and resolves symlinks inline
-//! - **Streaming lexical normalization**: Direct push/pop without intermediate allocations
-//! - **Minimal syscalls**: Early-exit when first component is missing; no redundant probes
-//! - **Platform-specific optimizations**: Windows extended-length prefix handling; robust Unix symlink behavior
-//!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
 //!
 //! For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
-//!
-//! ## Security
-//!
-//! This library provides robust path handling features:
-//!
-//! - **Directory Traversal Prevention**: `..` components resolved before filesystem access
-//! - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection
-//! - **Comprehensive Security Testing**: 40+ dedicated security tests covering CVE protection, attack simulation, and vulnerability discovery
-//! - **Cross-platform Normalization**: Handles platform-specific path quirks consistently
-//! - **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
-//!
-//! ### Test Coverage
-//!
-//! **111 comprehensive tests** including:
-//!
-//! - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-//! - **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks
-//! - **Python pathlib test suite adaptations** for cross-language validation
-//! - **Platform-specific tests** for Windows, macOS, and Linux edge cases
-//! - **Performance and stress tests** validating behavior under various conditions
-//!
-//! ### Security Test Coverage
-//!
-//! - **White-box Security Audits**: 14 tests exploiting internal algorithm knowledge
-//! - **Black-box Attack Simulation**: 18 tests treating the API as a black box
-//! - **CVE Protection**: Tested against known vulnerabilities (CVE-2022-21658, etc.)
-//! - **Attack Vectors**: Directory traversal, symlink escapes, race conditions, Unicode bypasses, NTFS ADS, filesystem limits
-//!
-//! Note: While this library can be used in security-critical applications, its primary
-//! purpose is accurate path canonicalization and comparison. Security applications should
-//! combine this with appropriate access controls and validation. For security-critical path
-//! handling with built-in boundary enforcement, consider using the [`jailed-path`](https://crates.io/crates/jailed-path)
-//! crate which builds on `soft-canonicalize` to provide type-safe path jailing.
 //!
 //! ## Known Limitations
 //!
@@ -266,10 +267,11 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 ///
 /// # Performance
 ///
-/// - **Time Complexity**: O(k) where k is the number of existing path components (k ≤ n)
-///   - **Best case**: O(1) when first component doesn't exist  
-///   - **Average case**: O(k) where k is typically much smaller than total components
-///   - **Worst case**: O(n) when entire path exists
+/// - **Time Complexity**:
+///   - End-to-end: O(n + s) where n is total components processed lexically, s is symlink depth
+///   - Filesystem probes: O(k + s) where k is the number of existing components (k ≤ n)
+///   - Best (probes): O(1) when the first component doesn't exist; lexical normalization remains O(n)
+///   - Worst: O(n + s) when the entire path exists and/or deep symlinks are present
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
 ///
@@ -292,32 +294,6 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 ///
 /// On Windows, canonical paths use the `\\?\` UNC prefix format for consistency
 /// with `std::fs::canonicalize`.
-///
-/// # Examples
-///
-/// ```
-/// use soft_canonicalize::soft_canonicalize;
-/// use std::path::Path;
-///
-/// // Works with existing paths (like std::fs::canonicalize)
-/// let existing = soft_canonicalize("/etc/passwd")?;
-///
-/// // Also works with non-existing paths (unlike std::fs::canonicalize)
-/// let non_existing = soft_canonicalize("/path/to/future/file.txt")?;
-///
-/// // Handles relative paths
-/// let relative = soft_canonicalize("../some/file.txt")?;
-/// # Ok::<(), std::io::Error>(())
-/// ```
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Cannot determine the current working directory (for relative paths)
-/// - Cannot read symlink targets in existing portions
-/// - Path contains null bytes or other invalid characters
-/// - Symlink depth exceeds the system limit (40 levels)
-/// - Path traversal goes above the filesystem root
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 
