@@ -68,7 +68,7 @@ bash ci-local.sh
 
 This runs all checks (format, clippy, tests, docs, security audit, MSRV) and ensures std compatibility. If it passes, your code is ready.
 
-**Test Coverage**: The project has 108 tests total:
+**Test Coverage**: The project has 111 tests total:
 
 - 78 unit tests (in `src/tests/`)
 - 6 complex attack tests (blackbox security)  

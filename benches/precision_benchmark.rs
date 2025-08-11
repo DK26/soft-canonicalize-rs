@@ -2,8 +2,43 @@ use soft_canonicalize::soft_canonicalize;
 //use crate::optimized::soft_canonicalize_optimized;  // We'll add this option
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 use tempfile::TempDir;
+
+/// Run the Python baseline benchmark and extract the performance number
+fn get_python_baseline() -> Result<f64, Box<dyn std::error::Error>> {
+    let python_commands = ["python", "python3", "py"];
+
+    for python_cmd in &python_commands {
+        let output = Command::new(python_cmd)
+            .arg("python_fair_comparison.py")
+            .current_dir("benches/python")
+            .env("PYTHONIOENCODING", "utf-8")
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+
+                for line in stdout.lines() {
+                    if line.contains("Individual Operations Avg:") {
+                        if let Some(ops_part) = line.split(':').nth(1) {
+                            if let Some(number_part) = ops_part.split("ops/s").next() {
+                                let clean_number = number_part.trim().replace(',', "");
+                                if let Ok(baseline) = clean_number.parse::<f64>() {
+                                    return Ok(baseline);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err("Failed to get Python baseline".into())
+}
 
 fn create_test_structure() -> Result<TempDir, Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
@@ -139,13 +174,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     analyze_specific_scenarios(base_dir)?;
 
     // Comparison with Python
-    println!("\n📝 Direct Comparison with Python 3.12.4");
+    println!("\n📝 Direct Comparison with Python");
     println!("Use these numbers for comparison:");
     println!("Overall mixed workload: {paths_per_second:.0} paths/s");
 
     println!("\n🔍 Performance Ratio Analysis");
-    let python_baseline = 4627.0; // From current Python benchmark
+    let python_baseline = get_python_baseline()?;
     let ratio = paths_per_second / python_baseline;
+    println!("Python baseline: {python_baseline:.0} ops/s");
     println!("Rust vs Python ratio: {ratio:.2}x");
 
     if ratio > 1.0 {

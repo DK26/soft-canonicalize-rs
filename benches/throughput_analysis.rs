@@ -1,8 +1,43 @@
 use soft_canonicalize::soft_canonicalize;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 use tempfile::TempDir;
+
+/// Run the Python baseline benchmark and extract the performance number
+fn get_python_baseline() -> Result<f64, Box<dyn std::error::Error>> {
+    let python_commands = ["python", "python3", "py"];
+
+    for python_cmd in &python_commands {
+        let output = Command::new(python_cmd)
+            .arg("python_fair_comparison.py")
+            .current_dir("benches/python")
+            .env("PYTHONIOENCODING", "utf-8")
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+
+                for line in stdout.lines() {
+                    if line.contains("Individual Operations Avg:") {
+                        if let Some(ops_part) = line.split(':').nth(1) {
+                            if let Some(number_part) = ops_part.split("ops/s").next() {
+                                let clean_number = number_part.trim().replace(',', "");
+                                if let Ok(baseline) = clean_number.parse::<f64>() {
+                                    return Ok(baseline);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err("Failed to get Python baseline".into())
+}
 
 fn create_test_structure() -> Result<TempDir, Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
@@ -133,16 +168,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mixed workload throughput: {throughput:.0} paths/s");
 
     // Compare with Python baseline
-    println!("\n📊 Comparison with Python 3.12.4:");
+    println!("\n📊 Comparison with Python:");
     println!("==================================");
-    let python_baseline = 4627.0;
+    let python_baseline = get_python_baseline()?;
+    let ratio = throughput / python_baseline;
 
-    println!("Python 3.12.4:            {python_baseline:>10.0} paths/second");
+    println!("Python baseline:           {python_baseline:>10.0} paths/second");
     println!("Rust (mixed workload):     {throughput:>10.0} paths/second");
     println!(
-        "Performance vs Python:     {:.1}x faster ({:.1}% improvement)",
-        throughput / python_baseline,
-        (throughput / python_baseline - 1.0) * 100.0
+        "Performance vs Python:     {ratio:>6.1}x faster ({:.1}% improvement)",
+        (ratio - 1.0) * 100.0
     );
 
     Ok(())

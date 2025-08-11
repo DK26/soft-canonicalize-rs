@@ -1,4 +1,4 @@
-﻿# soft-canonicalize
+# soft-canonicalize
 
 [![Crates.io](https://img.shields.io/crates/v/soft-canonicalize.svg)](https://crates.io/crates/soft-canonicalize)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
@@ -13,12 +13,12 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
+**⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔧 Zero dependencies** - Only uses std library  
-**⚡ Fast** - 1.3x-1.5x faster than Python's pathlib in mixed workloads  
-**🔒 Secure** - 108 comprehensive tests including security scenarios and path traversal prevention  
+**🔒 Secure** - 111 comprehensive tests including security scenarios and path traversal prevention  
+**🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling  
-**🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
+**🔧 Zero dependencies** - Only uses std library
 
 ## What is Path Canonicalization?
 
@@ -38,19 +38,26 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 ```rust
 use soft_canonicalize::soft_canonicalize;
+use std::path::PathBuf;
 
-// Works with non-existing paths (unlike std::fs::canonicalize)
-let result = soft_canonicalize("../future/config.json")?;
-// Returns: "/home/user/project/future/config.json"
+let non_existing_path = r"C:\Users\user\documents\..\non\existing\config.json";
 
-// Resolves complex traversals logically
-let result = soft_canonicalize("src/../data/../config.json")?;  
-// Returns: "/home/user/project/config.json"
+// Using Rust's own std canonicalize function:
+let result = std::fs::canonicalize(non_existing_path);
+assert!(result.is_err());
 
-// Same as std::fs::canonicalize for existing paths
-let result = soft_canonicalize("src/lib.rs")?;
-// Returns: "/home/user/project/src/lib.rs" (with symlinks resolved)
+// Using our crate's function:
+let result = soft_canonicalize(non_existing_path);
+assert!(result.is_ok());
+
+// Shows the UNC path conversion and path normalization
+assert_eq!(
+    result.unwrap().to_string_lossy(),
+    r"\\?\C:\Users\user\non\existing\config.json"
+);
 ```
+
+**📝 Note:** Symlinks are also automatically resolved with cycle detection.
 
 ## Quick Start
 
@@ -59,73 +66,45 @@ let result = soft_canonicalize("src/lib.rs")?;
 soft-canonicalize = "0.2.0"
 ```
 
-**That's it!** Zero dependencies, pure Rust stdlib.
-
-## Examples
-
-```rust
-use soft_canonicalize::soft_canonicalize;
-use std::path::PathBuf;
-
-// Starting from working directory: /home/user/myproject
-
-// Non-existing file planning
-let result = soft_canonicalize("data/config.json")?;
-assert_eq!(result, PathBuf::from("/home/user/myproject/data/config.json"));
-
-// Complex path traversal resolution  
-let result = soft_canonicalize("src/../data/settings.toml")?;
-assert_eq!(result, PathBuf::from("/home/user/myproject/data/settings.toml"));
-
-// Existing files (same as std::fs::canonicalize)
-let result = soft_canonicalize("src/../README.md")?;
-assert_eq!(result, PathBuf::from("/home/user/myproject/README.md"));
-```
-
-## Use Cases
-
-- **Path Comparison & Deduplication**: Ensure different path representations are recognized as equivalent
-- **Build Tools**: Resolving non-existing output paths and dependency tracking
-- **File System Planning**: Computing canonical paths for files that will be created
-- **Web Applications**: Normalizing user-provided paths for consistent handling
-- **Security Applications**: Safe path validation with proper symlink resolution
-
 ## How It Works
 
-This library implements an optimized **PathResolver algorithm** that:
+This library implements an optimized, single-pass path resolution algorithm with the following stages:
 
-1. **Optimization for existing paths**: Uses `std::fs::canonicalize()` directly for existing absolute paths without dot components
-2. **Boundary detection**: Efficiently finds the split between existing and non-existing path components
-3. **Lexical resolution**: Resolves `..` and `.` components without filesystem calls where possible
-4. **Symlink handling**: Properly resolves existing symlinks with cycle detection and depth limits
-5. **Platform optimization**: Maintains Windows UNC path canonicalization (`\\?\C:\...` format)
+1. **Input validation**: Handle empty paths early (matches `std::fs::canonicalize` behavior)
+2. **Absolute path conversion**: Convert relative paths to absolute using the current working directory
+3. **Lexical normalization**: Resolve `.` and `..` components without filesystem calls
+4. **Fast-path attempt**: Try `std::fs::canonicalize` once; if it succeeds (path fully exists), return early
+5. **Null byte validation**: Check for embedded null bytes (platform-specific error handling)
+6. **Existing-prefix discovery**: Walk components left-to-right to find the deepest existing ancestor; resolve symlinks inline with cycle detection
+7. **Conditional anchor canonicalization**: If any symlink was encountered, canonicalize the deepest existing ancestor once to normalize casing/UNC details
+8. **Result reconstruction**: Append non-existing components to the canonicalized base
+9. **Windows normalization**: Ensure extended-length prefix (\\?\) for absolute Windows paths when needed
 
-This approach ensures you get the same results as the standard library for existing paths, with extended support for non-existing paths.
+This approach matches `std::fs::canonicalize` behavior for existing paths, while extending support to non-existing paths with minimal overhead.
 
 ## Performance & Benchmarks
 
-**1.3x - 1.5x faster than Python 3.12.4** in mixed workloads on typical hardware.
+Cross-platform results against Python pathlib (mixed workloads):
 
-### Algorithm Optimizations
+- Windows (Python baseline ~5.9–6.9k paths/s): Rust ~9.5–11.9k paths/s → ~1.4–2.0x faster
+- Linux (Python baseline ~95k paths/s): Rust ~238k–448k paths/s → ~2.5–4.7x faster
 
-- **Fast-path for simple cases**: Direct `std::fs::canonicalize()` for existing absolute paths without dot components  
-- **Binary search boundary detection**: O(log n) time complexity to find existing/non-existing split
-- **Single-pass normalization**: Resolves `..` and `.` components without filesystem calls where possible
-- **Intelligent caching**: Reuses filesystem queries within the same path resolution
-- **Platform-specific optimizations**: Windows UNC path handling, Unix symlink resolution
+### Key Optimizations
+
+- **Fast-path for existing paths**: Direct `std::fs::canonicalize()` when the entire normalized path exists
+- **Single-pass existing-prefix discovery**: Finds the deepest existing ancestor and handles symlinks inline
+- **Streaming lexical normalization**: Resolves `..` and `.` without extra allocations using direct push/pop operations
+- **Minimal syscalls**: Early-exit when first component is missing; avoid redundant filesystem probes
+- **Platform-specific optimizations**: Windows extended-length (\\?\) handling; robust Unix symlink behavior
 
 ### Detailed Results
 
-**Verified against Python 3.12.4's `pathlib.Path.resolve(strict=False)`:**
+Measured with the benches in this repo (see `benches/`) against Python 3.10/3.12 pathlib:
 
-| Scenario              | Python 3.12.4         | Rust (this crate)           | Performance Comparison        |
-| --------------------- | --------------------- | --------------------------- | ----------------------------- |
-| **Mixed workload**    | 4,627 paths/s         | **6,089 - 6,769 paths/s**   | **1.3x - 1.5x faster**        |
-| Simple existing paths | ~6,600 paths/s        | **10,057 - 12,851 paths/s** | **1.5x - 1.9x faster**        |
-| Path traversal (../)  | ~6,500 paths/s        | **11,551 - 13,529 paths/s** | **1.8x - 2.1x faster**        |
-| Non-existing paths    | 2,516 - 4,441 paths/s | **1,950 - 2,072 paths/s**   | **0.4x - 0.8x (competitive)** |
+- Windows mixed workload: Rust ~9.5k–11.9k vs Python ~5.9k–6.9k paths/s (≈1.4–2.0x)
+- Linux mixed workload: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
 
-*Performance varies by hardware. Benchmarks run on Windows 11 with comprehensive test suites.*
+Performance varies by hardware and OS/filesystem. See the bench outputs for per-scenario numbers.
 
 For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 
@@ -140,7 +119,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 
 ### Test Coverage
 
-**108 comprehensive tests** including:
+**111 comprehensive tests** including:
 
 - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
@@ -181,6 +160,28 @@ These tests ensure that `soft_canonicalize` doesn't inherit the security vulnera
 
 **Choose `soft-canonicalize` when you need**: Core path canonicalization for non-existing files with full symlink resolution.  
 **Choose `jailed-path` when you need**: Path jailing with type-safe boundaries (builds on `soft-canonicalize`).
+
+## Known Limitations
+
+### Windows Short Filename Equivalence
+
+On Windows, the filesystem may generate short filenames (8.3 format) for long directory names. For **non-existing paths**, this library cannot determine if a short filename form (e.g., `PROGRA~1`) and its corresponding long form (e.g., `Program Files`) refer to the same future location:
+
+```rust
+use soft_canonicalize::soft_canonicalize;
+
+// These non-existing paths are treated as different (correctly)
+let short_form = soft_canonicalize("C:/PROGRA~1/MyApp/config.json")?;
+let long_form = soft_canonicalize("C:/Program Files/MyApp/config.json")?;
+
+// They will NOT be equal because we cannot determine equivalence
+// without filesystem existence
+assert_ne!(short_form, long_form);
+```
+
+**This is a fundamental limitation** shared by Python's `pathlib.Path.resolve(strict=False)` and other path canonicalization libraries across languages. Short filename mapping only exists when files/directories are actually created by the filesystem.
+
+**For existing paths**, this library correctly resolves short and long forms to the same canonical result, maintaining 100% compatibility with `std::fs::canonicalize`.
 
 ## Contributing
 
