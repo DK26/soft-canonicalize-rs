@@ -10,15 +10,15 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 120 tests including std::fs::canonicalize compatibility tests,
+//! **🔬 Comprehensive test suite with 158 tests including std::fs::canonicalize compatibility tests,
 //! security penetration tests, Python pathlib validations, and CVE protections.**
 //!
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
-//! - **⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+//! - **⚡ Fast** - Windows: ~1.5–2.1x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Security-tested** - 120 tests including CVE protections and path traversal prevention  
+//! - **🔒 Security-tested** - 158 tests including CVE protections and path traversal prevention  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
 //! - **🔧 Zero dependencies** - Only uses std library
@@ -33,7 +33,7 @@
 //! ### Cargo.toml
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.2.2"
+//! soft-canonicalize = "0.2.3"
 //! ```
 //!
 //! ### Code Example
@@ -111,9 +111,9 @@
 //!
 //! ## Performance & Benchmarks
 //!
-//! Cross-platform performance (mixed workloads): Windows ~1.4–2.0x; Linux ~2.5–4.7x vs Python 3.x.
+//! Cross-platform performance (mixed workloads): Windows ~1.5–2.1x; Linux ~2.5–4.7x vs Python 3.x.
 //!
-//! **Windows mixed**: Rust ~9.5k–11.9k vs Python ~5.9k–6.9k paths/s (≈1.4–2.0x)
+//! **Windows mixed**: Rust ~9.0k–12.3k vs Python ~5.8k–6.3k paths/s (≈1.5–2.1x)
 //! **Linux mixed**: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
 //!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
@@ -275,7 +275,7 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
 ///
-/// **Benchmark snapshot** (mixed workloads): Windows ~9.5k–11.9k vs Python ~5.9k–6.9k; Linux ~238k–448k vs Python ~95k.
+/// **Benchmark snapshot** (mixed workloads): Windows ~9.0k–12.3k vs Python ~5.8k–6.3k; Linux ~238k–448k vs Python ~95k.
 ///
 /// **Comparison with alternatives**: Provides unique combination of non-existing path
 /// support with full symlink resolution and robust path handling that other libraries
@@ -303,6 +303,17 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             io::ErrorKind::NotFound,
             "The system cannot find the path specified.",
         ));
+    }
+
+    // Windows-only: explicit guard — reject incomplete UNC roots (\\server without a share)
+    #[cfg(windows)]
+    {
+        if is_incomplete_unc(path) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid UNC path: missing share",
+            ));
+        }
     }
 
     // Stage 1: convert to absolute path (preserves drive/root semantics)
@@ -415,13 +426,36 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // Stage 8 (Windows): ensure extended-length prefix for absolute paths when we didn't canonicalize
     #[cfg(windows)]
     {
-        use std::path::Component;
-        if matches!(result.components().next(), Some(Component::Prefix(_))) {
-            result = ensure_windows_extended_prefix(&result);
+        use std::path::{Component, Prefix};
+        if let Some(Component::Prefix(pr)) = result.components().next() {
+            match pr.kind() {
+                Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _) => { /* already extended */
+                }
+                Prefix::Disk(_) | Prefix::UNC(_, _) => {
+                    result = ensure_windows_extended_prefix(&result);
+                }
+                Prefix::DeviceNS(_) => { /* leave as-is */ }
+            }
         }
     }
 
     Ok(result)
+}
+
+#[cfg(windows)]
+fn is_incomplete_unc(p: &Path) -> bool {
+    // Detect \\server or \\server\\ (no share). Exclude verbatim and device namespaces.
+    let raw = p.as_os_str().to_string_lossy();
+    if raw.starts_with("\\\\") && !raw.starts_with("\\\\?\\") && !raw.starts_with("\\\\.\\") {
+        let mut parts = raw
+            .trim_start_matches(['\\', '/'])
+            .split(['\\', '/'])
+            .filter(|s| !s.is_empty());
+        let server = parts.next();
+        let share = parts.next();
+        return server.is_some() && share.is_none();
+    }
+    false
 }
 
 #[cfg(windows)]
@@ -463,12 +497,15 @@ fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
 //
 
 #[cfg(windows)]
+#[inline]
 fn has_windows_short_component(p: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
     use std::path::Component;
+    const TILDE: u16 = 0x007E; // '~'
     for comp in p.components() {
         if let Component::Normal(name) = comp {
-            // Heuristic: 8.3 short names contain a tilde '~' in the component
-            if name.to_string_lossy().contains('~') {
+            // 8.3 short names typically contain a tilde '~'. Scan wide chars without allocations.
+            if name.encode_wide().any(|wc| wc == TILDE) {
                 return true;
             }
         }
@@ -626,27 +663,191 @@ fn is_likely_system_symlink(_path: &Path) -> bool {
 /// - Output: a PathBuf where `.` is removed and `..` pops one component when possible
 /// - Root semantics are preserved (never pops past root)
 fn simple_normalize_path(path: &Path) -> PathBuf {
-    let mut result = PathBuf::new();
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        use std::path::{Component, Prefix};
 
-    for component in path.components() {
-        match component {
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                result.push(component.as_os_str());
-            }
-            std::path::Component::Normal(name) => {
-                result.push(name);
-            }
-            std::path::Component::ParentDir => {
-                // Pop only if there is a parent (stay at root otherwise)
-                let _ = result.pop();
-            }
-            std::path::Component::CurDir => {
-                // Skip
+        // Capture prefix and root semantics, and normalize components lexically with clamping
+        enum Anchor {
+            None,
+            Drive(OsString),         // e.g., "C:"
+            Unc(OsString, OsString), // (server, share)
+            DeviceNS(OsString),      // raw device prefix (e.g., \\.\, \\?\GLOBALROOT\...)
+        }
+
+        let mut anchor = Anchor::None;
+        let mut prefix_os: Option<OsString> = None; // original prefix text
+        let mut has_root_dir = false;
+        let mut stack: Vec<OsString> = Vec::new();
+
+        for comp in path.components() {
+            match comp {
+                Component::Prefix(p) => {
+                    // Identify and preserve prefix verbatim, but capture parsed parts for UNC/Drive
+                    prefix_os = Some(p.as_os_str().to_os_string());
+                    match p.kind() {
+                        Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+                            anchor = Anchor::Unc(server.to_os_string(), share.to_os_string());
+                        }
+                        Prefix::Disk(d) | Prefix::VerbatimDisk(d) => {
+                            // Store like "C:"
+                            let mut s = OsString::with_capacity(2);
+                            s.push(format!("{}:", (d as char)));
+                            anchor = Anchor::Drive(s);
+                            // For drive-absolute, RootDir will activate floor
+                        }
+                        Prefix::DeviceNS(ns) | Prefix::Verbatim(ns) => {
+                            anchor = Anchor::DeviceNS(ns.to_os_string());
+                        }
+                    }
+                }
+                Component::RootDir => {
+                    has_root_dir = true;
+                }
+                Component::CurDir => {
+                    // skip
+                }
+                Component::Normal(name) => {
+                    stack.push(name.to_os_string());
+                }
+                Component::ParentDir => {
+                    if !stack.is_empty() {
+                        stack.pop();
+                    } else {
+                        // Either no floor or at floor: ignore/clamp, do nothing
+                    }
+                }
             }
         }
+
+        // Fallback: if no anchor detected but the raw path starts with two slashes (UNC-like),
+        // treat the first two components as server/share and clamp at that share root.
+        if matches!(anchor, Anchor::None) {
+            // Detect raw leading UNC (\\server\share) and override anchor,
+            // excluding verbatim (\\?\) and device (\\.\) namespaces.
+            let raw = path.as_os_str().to_string_lossy();
+            if raw.starts_with("\\\\") && !raw.starts_with("\\\\?\\") && !raw.starts_with("\\\\.\\")
+            {
+                // Tokenize by both separators
+                let mut parts = raw
+                    .trim_start_matches(['\\', '/'])
+                    .split(['\\', '/'])
+                    .filter(|s| !s.is_empty());
+                if let (Some(server_s), Some(share_s)) = (parts.next(), parts.next()) {
+                    let server = std::ffi::OsString::from(server_s);
+                    let share = std::ffi::OsString::from(share_s);
+                    anchor = Anchor::Unc(server, share);
+                    has_root_dir = true;
+
+                    // Lexically normalize the remainder
+                    let mut new_stack: Vec<std::ffi::OsString> = Vec::new();
+                    for seg in parts {
+                        match seg {
+                            "." => {}
+                            ".." => {
+                                let _ = new_stack.pop();
+                            }
+                            _ => new_stack.push(std::ffi::OsString::from(seg)),
+                        }
+                    }
+                    stack = new_stack;
+                }
+            }
+        }
+
+        // Rebuild path using Anchor where possible (UNC/Drive), falling back to original prefix for DeviceNS
+        let mut out = PathBuf::new();
+        match &anchor {
+            Anchor::Unc(server, share) => {
+                // Build non-verbatim UNC: \\server\share
+                let base = PathBuf::from(format!(
+                    r"\\{}\{}",
+                    server.to_string_lossy(),
+                    share.to_string_lossy()
+                ));
+                out.push(base);
+                if has_root_dir {
+                    out.push(Component::RootDir.as_os_str());
+                }
+            }
+            Anchor::Drive(drive) => {
+                out.push(drive);
+                if has_root_dir {
+                    out.push(Component::RootDir.as_os_str());
+                }
+            }
+            Anchor::DeviceNS(ns) => {
+                let _ = ns; // read to avoid dead_code warning
+                if let Some(p) = &prefix_os {
+                    out.push(p);
+                }
+                // No RootDir for DeviceNS
+            }
+            Anchor::None => {
+                if let Some(p) = &prefix_os {
+                    out.push(p);
+                }
+                if has_root_dir {
+                    out.push(Component::RootDir.as_os_str());
+                }
+            }
+        }
+        // If we have a Drive or UNC anchor, return an extended-length path now
+        match anchor {
+            Anchor::Unc(ref server, ref share) => {
+                let mut ext = PathBuf::from(r"\\?\UNC");
+                ext.push(server);
+                ext.push(share);
+                for seg in stack {
+                    ext.push(seg);
+                }
+                return ext;
+            }
+            Anchor::Drive(ref drive) => {
+                let mut ext = PathBuf::from(r"\\?\");
+                ext.push(drive);
+                if has_root_dir {
+                    ext.push(Component::RootDir.as_os_str());
+                }
+                for seg in stack {
+                    ext.push(seg);
+                }
+                return ext;
+            }
+            _ => {}
+        }
+
+        for seg in stack {
+            out.push(seg);
+        }
+        out
     }
 
-    result
+    #[cfg(not(windows))]
+    {
+        let mut result = PathBuf::new();
+
+        for component in path.components() {
+            match component {
+                std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                    result.push(component.as_os_str());
+                }
+                std::path::Component::Normal(name) => {
+                    result.push(name);
+                }
+                std::path::Component::ParentDir => {
+                    // Pop only if there is a parent (stay at root otherwise)
+                    let _ = result.pop();
+                }
+                std::path::Component::CurDir => {
+                    // Skip
+                }
+            }
+        }
+
+        result
+    }
 }
 
 #[cfg(test)]

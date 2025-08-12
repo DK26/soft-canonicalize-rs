@@ -13,11 +13,11 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+**⚡ Fast** - Windows: ~1.5–2.1x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Secure** - 120 comprehensive tests including security scenarios and path traversal prevention  
+**🔒 Secure** - 158 comprehensive tests including security scenarios and path traversal prevention  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
-**🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling  
+**🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
 
 For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
@@ -30,7 +30,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.2.2"
+soft-canonicalize = "0.2.3"
 ```
 
 ### Code Example
@@ -60,28 +60,33 @@ assert_eq!(
 
 - **Directory Traversal Prevention**: `..` components resolved before filesystem access
 - **Symlink Resolution**: Existing symlinks properly resolved with cycle detection  
-- **Cross-platform Path Normalization**: Handles Windows drive letters, UNC paths, and Unix absolute paths
+- **Cross-platform Path Normalization**: Handles Windows drive letters, UNC paths, device namespaces, and Unix absolute paths
+- **Extended-Length Path Support**: Automatic conversion to `\\?\` prefixes on Windows for >260 character paths
+- **Unicode Preservation**: Maintains exact Unicode representation without normalization for security
  
 ### Test Coverage
 
-**120 comprehensive tests** including:
+**152 comprehensive tests** including:
 
-- **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-- **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
-- **Python pathlib test suite adaptations** for cross-language validation
-- **Platform-specific tests** for Windows, macOS, and Linux edge cases
-- **Performance and stress tests** validating behavior under various conditions
+- **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
+- **44 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
+- **25 Windows UNC path tests** including unicode preservation, long paths, and mixed separators
+- **42 Python pathlib test suite adaptations** for cross-language validation
+- **21 platform-specific tests** for Windows, macOS, and Linux edge cases
+- **9 performance and stress tests** validating behavior under various conditions
 
 ### 🔍 Tested Against Known Vulnerabilities
 
 Our comprehensive security test suite specifically validates protection against real-world vulnerabilities found in other path handling libraries:
 
 - **CVE-2022-21658 Race Conditions**: Tests against Time-of-Check-Time-of-Use (TOCTOU) attacks where symlinks are replaced between canonicalization and file access
-- **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths
+- **UNC Path Traversal Prevention**: Comprehensive testing of Windows UNC paths to prevent escape from share roots using `..` traversal
+- **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths, including homoglyph and zero-width character preservation
 - **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)
 - **Case Sensitivity Bypasses**: Tests on case-insensitive filesystems to prevent case-based security bypasses
 - **Symlink Jail Escapes**: Comprehensive testing of symlinked directory attacks and nested symlink chains
 - **NTFS Alternate Data Streams**: Windows-specific tests for ADS attack vectors that can hide malicious content
+- **Device Namespace Security**: Tests for `\\.\` and `\\?\GLOBALROOT\` path handling to prevent device namespace exploitation
 - **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
 - **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
 
@@ -111,6 +116,9 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 | ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ------------------------- | ------------------- |
 | Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                         | ✅ (via this crate)  |
 | Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Windows UNC path support      | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Extended-length path support  | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Device namespace paths        | ✅ (lexical)         | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
 | Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ❌ (uses this crate) |
 | Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate)  |
 | Security tested               | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |

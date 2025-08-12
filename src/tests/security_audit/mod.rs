@@ -25,6 +25,7 @@ pub mod misc;
 pub mod platform;
 pub mod race;
 pub mod symlink;
+pub mod unc;
 pub mod unicode;
 
 // Platform-specific modules

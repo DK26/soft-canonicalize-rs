@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-08-12
+
+### Added
+- **Windows UNC Path Support**: New Windows-specific implementation with comprehensive UNC path handling
+- **Windows Extended-Length Path Support**: Automatic conversion of Drive and UNC paths to `\\?\` extended-length format
+- **UNC Path Detection**: Advanced UNC path detection including fallback parsing for raw `\\server\share` patterns
+- **Windows Device Namespace Handling**: Lexical-only processing for `\\.\` and `\\?\GLOBALROOT\` device paths
+- **Comprehensive UNC Test Suite**: Added 3 new black-box UNC test modules:
+  - `tests/blackbox_unc_attacks.rs`: UNC-specific security penetration tests (4 tests)
+  - `tests/blackbox_unc_corner_cases.rs`: UNC edge case handling (6 tests)  
+  - `tests/blackbox_unc_extras.rs`: Unicode obfuscation and long path tests (8 tests)
+- **Enhanced Platform-Specific Tests**: Added 17 new Windows-specific tests in `src/tests/platform_specific.rs`
+- **Security Audit UNC Module**: New `src/tests/security_audit/unc.rs` white-box UNC penetration tests (4 tests)
+
+### Improved
+- **Windows Path Canonicalization**: Enhanced Windows implementation with proper UNC, Drive, and DeviceNS path handling
+- **UNC Server/Share Preservation**: Exact preservation of Unicode sequences in UNC server and share names
+- **Mixed Separator Normalization**: Robust handling of mixed `\` and `/` separators in Windows paths
+- **Parent Directory Clamping**: Smart `.` and `..` resolution with proper clamping at drive/UNC share roots
+- **Unicode Attack Resistance**: Preserves exact Unicode byte sequences to prevent normalization-based security bypasses
+
+### Security Enhancements
+- **UNC Jail Break Prevention**: Parent directory traversal cannot escape above UNC share root (`\\server\share`)
+- **Drive Root Protection**: Parent traversal properly clamped at drive roots for extended-length paths
+- **Long Path Attack Mitigation**: Safe handling of very long paths (>260 chars) using Windows extended-length prefixes
+- **Alternate Data Stream Preservation**: Textual preservation of ADS suffixes (`:stream_name`) in path components
+
 ## [0.2.2] - 2025-08-12
 ### Improved
 - **Documentation Restructuring**: Major reorganization of README.md and lib.rs documentation for better clarity and user experience
