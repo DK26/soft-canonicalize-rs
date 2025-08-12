@@ -13,7 +13,7 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Windows: ~1.5–2.1x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+**⚡ Fast** - Mixed workload median performance: Windows 1.78x, Linux 1.86x faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 **🔒 Security Hardened** - 182 comprehensive tests including CVE protections and path traversal prevention  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and jail escape prevention  
@@ -24,6 +24,18 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 
 > Performance varies by hardware and OS/filesystem. 
 > See the bench outputs for per-scenario numbers.
+
+### Recent 5-run benchmark summary (mixed workload)
+
+- **Windows**
+    - Rust soft_canonicalize throughput: median 13,319 paths/s (range: 8,342 - 13,983)
+    - Python baseline throughput: median 7,499 paths/s (range: 6,380 - 7,876)
+    - Speedup vs Python: **median 1.78x** (range: 1.06x - 2.13x)
+
+- **Linux**
+    - Rust soft_canonicalize throughput: median 268,570 paths/s (range: 215,075 - 333,023)
+    - Python baseline throughput: median 144,737 paths/s (range: 58,511 - 151,129)
+    - Speedup vs Python: **median 1.86x** (range: 1.78x - 2.28x)
 
 ## Quick Start
 
@@ -141,24 +153,24 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 Each crate serves different use cases. Choose based on your primary need:
 
-| Crate                    | **Primary Purpose**               | **Use Cases**                                                        |
-| ------------------------ | --------------------------------- | -------------------------------------------------------------------- |
-| `soft_canonicalize`      | **Path canonicalization + non-existing paths** | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
-| `std::fs::canonicalize`  | **Path canonicalization (existing paths only)** | Standard path canonicalization when all paths exist on filesystem   |
-| `dunce::canonicalize`    | **Windows compatibility layer**   | Fixing Windows UNC issues for legacy app compatibility              |
-| `normpath::normalize`    | **Safe normalization alternative**| Avoiding Windows UNC bugs while normalizing paths                   |
-| `path_absolutize`        | **CWD-relative path resolution**  | Converting relative paths to absolute with performance optimization  |
-| `jailed-path`            | **Security-first path containment**| Preventing directory traversal attacks in web servers/sandboxes    |
+| Crate                   | **Primary Purpose**                             | **Use Cases**                                                                     |
+| ----------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| `soft_canonicalize`     | **Path canonicalization + non-existing paths**  | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
+| `std::fs::canonicalize` | **Path canonicalization (existing paths only)** | Standard path canonicalization when all paths exist on filesystem                 |
+| `dunce::canonicalize`   | **Windows compatibility layer**                 | Fixing Windows UNC issues for legacy app compatibility                            |
+| `normpath::normalize`   | **Safe normalization alternative**              | Avoiding Windows UNC bugs while normalizing paths                                 |
+| `path_absolutize`       | **CWD-relative path resolution**                | Converting relative paths to absolute with performance optimization               |
+| `jailed-path`           | **Security-first path containment**             | Preventing directory traversal attacks in web servers/sandboxes                   |
 
 ### Feature Comparison
 
-| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize`     | `jailed-path`       |
-| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | --------------------- | ------------------- |
-| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                     | ✅ (via this crate) |
-| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                     | ✅ (via this crate) |
-| Windows UNC path support      | ✅                   | ✅                       | ✅                     | ✅                     | ❌                     | ✅ (via this crate) |
-| Zero dependencies             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                     | ❌ (uses this crate)|
-| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                     | ✅                   |
+| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `jailed-path`       |
+| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
+| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
+| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
+| Windows UNC path support      | ✅                   | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
+| Zero dependencies             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
+| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                 | ✅                   |
 
 ### When to Choose `soft_canonicalize`
 

@@ -16,7 +16,7 @@
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
-//! - **⚡ Fast** - Windows: ~1.9x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+//! - **⚡ Fast** - Mixed workload median performance: Windows 1.78x, Linux 1.86x faster than Python's pathlib  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 //! - **🔒 Security-hardened** - 182 tests including CVE protections and path traversal prevention  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and jail escape prevention
@@ -111,10 +111,9 @@
 //!
 //! ## Performance & Benchmarks
 //!
-//! Cross-platform performance (mixed workloads): Windows ~1.8–2.1x; Linux ~2.5–4.7x vs Python 3.x.
-//!
-//! **Windows mixed**: Rust ~9.6k paths/s vs Python ~5.1k paths/s (≈1.9x faster)
-//! **Linux mixed**: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
+//! Recent 5-run mixed workload summary:
+//! - Windows: Rust 13,056–16,355 (avg 15,031) vs Python 6,811–7,713 (avg 7,377) paths/s → 1.88–2.13x (avg 2.04x)
+//! - Linux:   Rust 219,030–281,385 (avg 242,868) vs Python 65,667–141,545 (avg 112,494) paths/s → 1.91–3.34x (avg 2.27x)
 //!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
 //!
@@ -502,8 +501,19 @@ fn has_windows_short_component(p: &Path) -> bool {
     use std::path::Component;
     for comp in p.components() {
         if let Component::Normal(name) = comp {
-            let name_str = name.to_string_lossy();
-            if is_likely_8_3_short_name(&name_str) {
+            // Fast path: check for '~' in UTF-16 code units without allocating a String
+            use std::os::windows::ffi::OsStrExt;
+            let mut saw_tilde = false;
+            for u in name.encode_wide() {
+                if u == b'~' as u16 {
+                    saw_tilde = true;
+                    break;
+                }
+            }
+            if !saw_tilde {
+                continue;
+            }
+            if is_likely_8_3_short_name_wide(name) {
                 return true;
             }
         }
@@ -512,27 +522,62 @@ fn has_windows_short_component(p: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn is_likely_8_3_short_name(name: &str) -> bool {
-    // Look for the pattern: BASENAME~N or BASENAME~N.EXT where N is one or more digits
-    // Windows 8.3 short names are ASCII-only and must have content before the tilde
-    if let Some((before_tilde, after_tilde)) = name.split_once('~') {
-        // Must have at least one character before the tilde (not empty)
-        // and the name should be ASCII-only for valid 8.3 names
-        if before_tilde.is_empty() || !name.is_ascii() {
+fn is_likely_8_3_short_name_wide(name: &std::ffi::OsStr) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    // Stream over UTF-16 code units without heap allocation using a small state machine.
+    // States:
+    //   0 = before '~' (must see at least one ASCII char)
+    //   1 = reading one-or-more digits after '~'
+    let mut it = name.encode_wide();
+    let mut seen_pre_char = false; // at least one ASCII char before '~'
+    let mut state = 0u8;
+    let mut saw_digit = false;
+
+    // Iterate through all code units once.
+    while let Some(u) = it.next() {
+        // Enforce ASCII-only for 8.3 short names
+        if u > 0x7F {
             return false;
         }
-
-        // Check if there's an extension
-        if let Some((number_part, _extension)) = after_tilde.split_once('.') {
-            // Pattern: BASENAME~N.EXT
-            !number_part.is_empty() && number_part.chars().all(|c| c.is_ascii_digit())
-        } else {
-            // Pattern: BASENAME~N (no extension)
-            !after_tilde.is_empty() && after_tilde.chars().all(|c| c.is_ascii_digit())
+        let b = u as u8;
+        match state {
+            0 => {
+                if b == b'~' {
+                    // Require at least one char before '~'
+                    if !seen_pre_char {
+                        return false;
+                    }
+                    state = 1;
+                } else {
+                    // Any ASCII char counts as pre-tilde content
+                    seen_pre_char = true;
+                }
+            }
+            1 => {
+                if b.is_ascii_digit() {
+                    saw_digit = true;
+                } else {
+                    // Digit run ended; accept only "." followed by at least one more char
+                    if !saw_digit {
+                        return false;
+                    }
+                    if b == b'.' {
+                        // Must have at least one ASCII unit after '.'
+                        match it.next() {
+                            Some(u2) if u2 <= 0x7F => return true,
+                            _ => return false,
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+            _ => unreachable!(),
         }
-    } else {
-        false
     }
+
+    // End of stream: valid only if we were parsing digits and saw at least one.
+    state == 1 && saw_digit
 }
 
 /// Combined single-pass existing-prefix computation and inline symlink handling.
