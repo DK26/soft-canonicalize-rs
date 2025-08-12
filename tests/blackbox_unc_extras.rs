@@ -1,7 +1,7 @@
 //! Extra black-box UNC tests for unicode obfuscation and long paths (Windows-only)
 
 #[cfg(windows)]
-mod tests {
+mod windows_unc_tests {
     use soft_canonicalize::soft_canonicalize;
     use std::ffi::OsString;
     use std::path::{Component, PathBuf, Prefix};

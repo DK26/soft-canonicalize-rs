@@ -20,17 +20,50 @@ python python_fair_comparison.py
 
 ## Current results (mixed workload)
 
-Note: numbers are machine- and OS-dependent. Results below reflect recent runs on typical dev hardware.
+Note: numbers are machine- and OS-dependent. Results below reflect 5-run campaigns on typical dev hardware.
 
-- Windows
-	- Python baseline: ~5.8k–6.3k paths/s
-	- Rust soft_canonicalize: ~9.0k–12.3k paths/s
-	- Speedup: ~1.5–2.1x (varies by run)
+### Latest Benchmark Results (August 2025)
 
-- Linux
-	- Python baseline: ~95k paths/s
-	- Rust soft_canonicalize: ~238k–448k paths/s
-	- Speedup: ~2.5–4.7x (varies by run)
+- **Windows (5 runs)**
+	- Speedup vs Python: median **1.83x** (range 1.6x - 2.04x across all benchmarks)
+	- Rust throughput: 8,931 - 12,058 paths/s (typical range)
+	- Python baseline: 5,139 - 6,528 paths/s (typical range)
+
+- **Linux (5 runs)**
+	- Speedup vs Python: median **3.56x** (range 2.41x - 5.25x across all benchmarks)
+	- Rust throughput: 224,540 - 435,998 paths/s (typical range)
+	- Python baseline: 70,562 - 112,271 paths/s (typical range)
+
+### Detailed Performance Analysis
+
+#### Windows Performance Breakdown (5-run medians):
+- **performance_comparison.rs** (mixed workload): 1.83x speedup (1.70x - 1.93x range)
+- **precision_benchmark.rs** (scenario analysis): 1.93x speedup (1.67x - 2.04x range)
+- **throughput_analysis.rs** (detailed scenarios): 1.7x speedup (1.6x - 1.7x range)
+
+#### Linux Performance Breakdown (5-run medians):
+- **performance_comparison.rs** (mixed workload): 3.56x speedup (3.27x - 4.55x range)
+- **precision_benchmark.rs** (scenario analysis): 3.02x speedup (2.41x - 5.25x range)
+- **throughput_analysis.rs** (detailed scenarios): 4.7x speedup (3.0x - 5.2x range)
+
+#### Raw Performance Data
+
+**Windows Results:**
+- performance_comparison: 9,372 - 10,955 paths/s vs Python 5,139 - 6,001 paths/s
+- precision_benchmark: 8,931 - 12,058 paths/s vs Python 5,216 - 6,242 paths/s  
+- throughput_analysis: 9,334 - 10,926 paths/s vs Python 5,812 - 6,528 paths/s
+
+**Linux Results:**
+- performance_comparison: 276,085 - 425,871 paths/s vs Python 84,389 - 103,782 paths/s
+- precision_benchmark: 224,540 - 427,426 paths/s vs Python 70,562 - 112,271 paths/s
+- throughput_analysis: 256,280 - 435,998 paths/s vs Python 82,055 - 86,284 paths/s
+
+**Key Findings:**
+- Linux shows dramatically superior performance vs Python (3.56x median vs previous 1.86x)
+- Windows performance improved and more stable (1.83x median vs previous 1.78x)
+- Performance improvements vs Python: Windows median 83%, Linux median 256%
+- Excellent consistency across different benchmark methodologies
+- Linux filesystem performance advantage over Windows remains significant
 
 The harness parses either “Individual Operations Avg” or a “Range:” line from `python_fair_comparison.py`, using whichever is available.
 

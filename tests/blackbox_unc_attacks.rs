@@ -3,7 +3,7 @@
 //! These tests avoid network access by relying on lexical behavior of soft_canonicalize.
 
 #[cfg(windows)]
-mod tests {
+mod windows_unc_tests {
     use soft_canonicalize::soft_canonicalize;
     use std::path::PathBuf;
 
