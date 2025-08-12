@@ -25,18 +25,6 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 > Performance varies by hardware and OS/filesystem. 
 > See the bench outputs for per-scenario numbers.
 
-### Recent 5-run benchmark summary (mixed workload)
-
-- **Windows**
-    - Rust soft_canonicalize throughput: median 13,319 paths/s (range: 8,342 - 13,983)
-    - Python baseline throughput: median 7,499 paths/s (range: 6,380 - 7,876)
-    - Speedup vs Python: **median 1.78x** (range: 1.06x - 2.13x)
-
-- **Linux**
-    - Rust soft_canonicalize throughput: median 268,570 paths/s (range: 215,075 - 333,023)
-    - Python baseline throughput: median 144,737 paths/s (range: 58,511 - 151,129)
-    - Speedup vs Python: **median 1.86x** (range: 1.78x - 2.28x)
-
 ## Quick Start
 
 ### Cargo.toml
