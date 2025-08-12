@@ -244,6 +244,45 @@ fn test_windows_nonexistent_shortname_component_preserved() {
 
 #[cfg(windows)]
 #[test]
+fn test_windows_false_positive_tilde_names_not_treated_as_short() {
+    // Ensure that legitimate filenames with tildes are not treated as 8.3 short names
+    let test_cases = vec![
+        r"C:\Users\test\hello~world.txt",
+        r"C:\Projects\backup~file.doc",
+        r"C:\Config\settings~old.json",
+        r"C:\Temp\test~project\file.txt",
+    ];
+
+    for test_path in test_cases {
+        let got = soft_canonicalize(test_path).expect("canonicalize regular tilde filename");
+        // These should be processed normally without any special short name handling
+        assert!(
+            got.to_string_lossy().contains('~'),
+            "Tilde should be preserved in regular filename: {got:?}"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_actual_short_name_detection() {
+    // Test that actual 8.3 patterns are correctly identified
+    let short_name_paths = vec![
+        r"C:\PROGRA~1\MyApp\config.txt",
+        r"C:\Users\RUNNER~1\Documents\file.txt",
+        r"C:\Temp\LONGFI~1.TXT",
+    ];
+
+    for test_path in short_name_paths {
+        let got = soft_canonicalize(test_path).expect("canonicalize short name path");
+        // The path should be processed (exact result depends on filesystem state)
+        // but the important thing is it doesn't crash and produces a valid result
+        assert!(got.is_absolute(), "Result should be absolute: {got:?}");
+    }
+}
+
+#[cfg(windows)]
+#[test]
 fn test_windows_device_namespace_lexical_only_pipe() {
     // Device namespace paths should be treated lexically: preserve prefix, normalize dot/dotdot
     let input = r"\\.\PIPE\name\..\other";

@@ -23,9 +23,9 @@ python python_fair_comparison.py
 Note: numbers are machine- and OS-dependent. Results below reflect recent runs on typical dev hardware.
 
 - Windows
-	- Python baseline: ~5.8k–6.3k paths/s
-	- Rust soft_canonicalize: ~9.0k–12.3k paths/s
-	- Speedup: ~1.5–2.1x (varies by run)
+	- Python baseline: ~5.1k paths/s
+	- Rust soft_canonicalize: ~9.6k paths/s
+	- Speedup: ~1.9x (recent 5-run average)
 
 - Linux
 	- Python baseline: ~95k paths/s
