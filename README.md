@@ -66,20 +66,24 @@ assert_eq!(
  
 ### Test Coverage
 
-**152 comprehensive tests** including:
+**182 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-- **44 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
+- **51 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
 - **25 Windows UNC path tests** including unicode preservation, long paths, and mixed separators
 - **42 Python pathlib test suite adaptations** for cross-language validation
-- **21 platform-specific tests** for Windows, macOS, and Linux edge cases
-- **9 performance and stress tests** validating behavior under various conditions
+- **25 platform-specific tests** for Windows, macOS, and Linux edge cases
+- **20 performance and stress tests** validating behavior under various conditions
+- **8 Windows 8.3 CVE-specific tests** protecting against known filename vulnerabilities
+
+*Note: 177 tests run on Windows, with an additional 5 Unix-specific tests for cross-platform validation.*
 
 ### 🔍 Tested Against Known Vulnerabilities
 
 Our comprehensive security test suite specifically validates protection against real-world vulnerabilities found in other path handling libraries:
 
 - **CVE-2022-21658 Race Conditions**: Tests against Time-of-Check-Time-of-Use (TOCTOU) attacks where symlinks are replaced between canonicalization and file access
+- **Windows 8.3 Filename Vulnerabilities**: Comprehensive testing against CVE-2019-9855 (LibreOffice), CVE-2017-17793 (BlogoText), CVE-2020-12279 (Git), CVE-2005-0471 (Java), CVE-2002-2413 (WebSite Pro), and CVE-2001-0795 (LiteServe) short filename exploitation
 - **UNC Path Traversal Prevention**: Comprehensive testing of Windows UNC paths to prevent escape from share roots using `..` traversal
 - **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths, including homoglyph and zero-width character preservation
 - **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)

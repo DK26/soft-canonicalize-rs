@@ -24,6 +24,7 @@ pub mod memory;
 pub mod misc;
 pub mod platform;
 pub mod race;
+pub mod short_filename_bypass;
 pub mod symlink;
 pub mod unc;
 pub mod unicode;

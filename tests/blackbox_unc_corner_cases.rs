@@ -1,7 +1,7 @@
 //! Black-box UNC corner case tests (Windows-only)
 
 #[cfg(windows)]
-mod tests {
+mod windows_unc_tests {
     use soft_canonicalize::soft_canonicalize;
     use std::path::PathBuf;
 
