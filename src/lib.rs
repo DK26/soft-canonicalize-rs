@@ -16,7 +16,7 @@
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
-//! - **⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+//! - **⚡ Fast** - Windows: ~1.5–2.1x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 //! - **🔒 Security-tested** - 158 tests including CVE protections and path traversal prevention  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
@@ -111,9 +111,9 @@
 //!
 //! ## Performance & Benchmarks
 //!
-//! Cross-platform performance (mixed workloads): Windows ~1.4–2.0x; Linux ~2.5–4.7x vs Python 3.x.
+//! Cross-platform performance (mixed workloads): Windows ~1.5–2.1x; Linux ~2.5–4.7x vs Python 3.x.
 //!
-//! **Windows mixed**: Rust ~9.5k–11.9k vs Python ~5.9k–6.9k paths/s (≈1.4–2.0x)
+//! **Windows mixed**: Rust ~9.0k–12.3k vs Python ~5.8k–6.3k paths/s (≈1.5–2.1x)
 //! **Linux mixed**: Rust ~238k–448k vs Python ~95k paths/s (≈2.5–4.7x)
 //!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
@@ -275,7 +275,7 @@ pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else 
 /// - **Space Complexity**: O(n) for component storage during processing
 /// - **Filesystem Access**: Minimal - only existing portions require filesystem calls
 ///
-/// **Benchmark snapshot** (mixed workloads): Windows ~9.5k–11.9k vs Python ~5.9k–6.9k; Linux ~238k–448k vs Python ~95k.
+/// **Benchmark snapshot** (mixed workloads): Windows ~9.0k–12.3k vs Python ~5.8k–6.3k; Linux ~238k–448k vs Python ~95k.
 ///
 /// **Comparison with alternatives**: Provides unique combination of non-existing path
 /// support with full symlink resolution and robust path handling that other libraries
@@ -497,12 +497,15 @@ fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
 //
 
 #[cfg(windows)]
+#[inline]
 fn has_windows_short_component(p: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
     use std::path::Component;
+    const TILDE: u16 = 0x007E; // '~'
     for comp in p.components() {
         if let Component::Normal(name) = comp {
-            // Heuristic: 8.3 short names contain a tilde '~' in the component
-            if name.to_string_lossy().contains('~') {
+            // 8.3 short names typically contain a tilde '~'. Scan wide chars without allocations.
+            if name.encode_wide().any(|wc| wc == TILDE) {
                 return true;
             }
         }

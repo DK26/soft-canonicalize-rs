@@ -13,7 +13,7 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Windows: ~1.4–2.0x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
+**⚡ Fast** - Windows: ~1.5–2.1x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
 **🔒 Secure** - 158 comprehensive tests including security scenarios and path traversal prevention  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
