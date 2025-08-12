@@ -10,18 +10,18 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 158 tests including std::fs::canonicalize compatibility tests,
-//! security penetration tests, Python pathlib validations, and CVE protections.**
+//! **🔬 Comprehensive test suite with 182 tests including std::fs::canonicalize compatibility tests,
+//! security penetration tests, CVE protections, and cross-platform validation.**
 //!
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
 //! - **⚡ Fast** - Windows: ~1.9x faster; Linux: ~2.5–4.7x faster than Python's pathlib (mixed workloads)  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Security-tested** - 158 tests including CVE protections and path traversal prevention  
-//! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection
-//! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling
-//! - **🔧 Zero dependencies** - Only uses std library
+//! - **🔒 Security-hardened** - 182 tests including CVE protections and path traversal prevention  
+//! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and jail escape prevention
+//! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling and Unicode preservation
+//! - **🔧 Zero dependencies** - Only uses std library with extensive security validation
 //!
 //! For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 //!

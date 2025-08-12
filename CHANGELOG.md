@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Windows 8.3 CVE Protection Suite**: Comprehensive protection against 6 known Windows short filename vulnerabilities:
+  - CVE-2019-9855 (LibreOffice): Protection against Windows 8.3 path equivalence handling flaws
+  - CVE-2017-17793 (BlogoText): Prevention of backup file access through predictable 8.3 short names  
+  - CVE-2020-12279 (Git): Protection against NTFS short name equivalence confusion
+  - CVE-2005-0471 (Java): Mitigation of predictable temporary file names from 8.3 truncation
+  - CVE-2002-2413 (WebSite Pro): Prevention of script source disclosure via 8.3 equivalent filenames
+  - CVE-2001-0795 (LiteServe): Protection against CGI script source disclosure through 8.3 exploitation
+- **Security Audit Short Filename Module**: New `src/tests/security_audit/short_filename_bypass.rs` (3 test suites)
+- **Windows 8.3 CVE Test Suite**: New `tests/windows_8_3_cve_tests.rs` with 7 comprehensive CVE-specific tests
+- **8.3 Detection Validation Tests**: New `tests/test_8_3_detection_validation.rs` (2 security-critical tests)
+- **Performance Regression Protection**: New `tests/blackbox_performance_regression.rs` (5 algorithmic complexity tests)
+- **Edge Case Fuzzing Suite**: New `tests/blackbox_edge_case_fuzzing.rs` (4 boundary condition and Unicode tests)
+
+### Security
+- **Unicode Filename Security**: Protection against Unicode characters with tildes being misinterpreted as 8.3 short names
+- **Cross-Platform Security Validation**: Enhanced test coverage ensuring security properties work across Windows and Unix
+- **Performance Attack Prevention**: Algorithmic complexity validation preventing quadratic-time attacks
+- **Memory Exhaustion Protection**: Stress testing against memory exhaustion and resource consumption attacks
+- **Concurrent Security Testing**: Multi-threaded stress testing ensuring security under concurrent load
+
+### Improved
+- **Test Organization**: Enhanced Windows-only test organization with proper `#[cfg(windows)]` guards for CI compatibility
+- **Documentation**: Updated README with comprehensive CVE protection details and security feature documentation
+- **Cross-Platform CI**: Improved CI configuration preventing Linux pipeline issues with Windows-only code
+
 ## [0.2.3] - 2025-08-12
 
 ### Added
