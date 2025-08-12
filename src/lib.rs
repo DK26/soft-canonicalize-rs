@@ -33,7 +33,7 @@
 //! ### Cargo.toml
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.2.2"
+//! soft-canonicalize = "0.2.3"
 //! ```
 //!
 //! ### Code Example

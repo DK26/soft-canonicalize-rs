@@ -30,7 +30,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.2.2"
+soft-canonicalize = "0.2.3"
 ```
 
 ### Code Example
@@ -112,17 +112,17 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 ## Comparison with Alternatives
 
-| Feature                         | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize`         | `jailed-path`       |
-| ------------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ------------------------- | ------------------- |
-| Works with non-existing paths   | ✅                   | ❌                       | ❌                     | ✅                     | ✅                         | ✅ (via this crate)  |
-| Resolves symlinks               | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
-| Windows UNC path support        | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
-| Extended-length path support    | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
-| Device namespace paths          | ✅ (lexical)         | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
-| Zero dependencies               | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ❌ (uses this crate) |
-| Prevents symlink jail breaks    | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate)  |
-| Security tested                 | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
-| Built-in path jailing           | ❌                   | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (enforcement)     |
+| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize`         | `jailed-path`       |
+| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ------------------------- | ------------------- |
+| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                         | ✅ (via this crate)  |
+| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Windows UNC path support      | ✅                   | ✅                       | ✅                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Extended-length path support  | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Device namespace paths        | ✅ (lexical)         | ✅                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Zero dependencies             | ✅                   | ✅                       | ❌                     | ❌                     | ❌                         | ❌ (uses this crate) |
+| Prevents symlink jail breaks  | ✅                   | ✅                       | ✅                     | N/A                   | ⚠️ (no symlink resolution) | ✅ (via this crate)  |
+| Security tested               | ✅ (CVEs & bypasses) | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (via this crate)  |
+| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                         | ✅ (enforcement)     |
 
 **Choose `soft-canonicalize` when you need**: Core path canonicalization for non-existing files with full symlink resolution.  
 **Choose `jailed-path` when you need**: Path jailing with type-safe boundaries (builds on `soft-canonicalize`).
