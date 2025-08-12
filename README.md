@@ -13,29 +13,17 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance: Windows 1.78x, Linux 1.86x faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance: Windows 1.83x, Linux 3.56x faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Security Hardened** - 182 comprehensive tests including CVE protections and path traversal prevention  
-**🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and jail escape prevention  
-**🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling and Unicode preservation  
-**🔧 Zero dependencies** - Only uses std library with extensive security validation
+**🔒 Secure** - 182 comprehensive tests including CVE protections and path traversal prevention  
+**🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
+**🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
+**🔧 Zero dependencies** - Only uses std library
 
 For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 
 > Performance varies by hardware and OS/filesystem. 
 > See the bench outputs for per-scenario numbers.
-
-### Recent 5-run benchmark summary (mixed workload)
-
-- **Windows**
-    - Rust soft_canonicalize throughput: median 13,319 paths/s (range: 8,342 - 13,983)
-    - Python baseline throughput: median 7,499 paths/s (range: 6,380 - 7,876)
-    - Speedup vs Python: **median 1.78x** (range: 1.06x - 2.13x)
-
-- **Linux**
-    - Rust soft_canonicalize throughput: median 268,570 paths/s (range: 215,075 - 333,023)
-    - Python baseline throughput: median 144,737 paths/s (range: 58,511 - 151,129)
-    - Speedup vs Python: **median 1.86x** (range: 1.78x - 2.28x)
 
 ## Quick Start
 
@@ -68,69 +56,29 @@ assert_eq!(
 );
 ```
 
-## Features
-
-- **Directory Traversal Prevention**: `..` components resolved before filesystem access with jail escape protection
-- **Symlink Resolution**: Existing symlinks properly resolved with cycle detection and attack prevention  
-- **Cross-platform Path Normalization**: Handles Windows drive letters, UNC paths, device namespaces, and Unix absolute paths
-- **Extended-Length Path Support**: Automatic conversion to `\\?\` prefixes on Windows for >260 character paths
-- **Unicode Preservation**: Maintains exact Unicode representation without normalization for security
-- **Security Hardening**: Protection against TOCTOU attacks, Unicode bypasses, and filesystem boundary exploits
- 
 ### Test Coverage
 
 **182 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-- **107 core functionality tests** covering path resolution, symlinks, and edge cases
 - **51 security penetration tests** covering CVE protections and path traversal attacks  
-- **25 Windows UNC path tests** including unicode preservation, long paths, and mixed separators
 - **42 Python pathlib test suite adaptations** for cross-language validation
+- **25 Windows UNC path tests** including unicode preservation, long paths, and mixed separators
 - **25 platform-specific tests** for Windows, macOS, and Linux edge cases
-- **20 performance and stress tests** validating behavior under various conditions
-- **7 CVE-specific security tests** protecting against known vulnerabilities including filename handling flaws
+- **28 performance and stress tests** validating behavior under various conditions
 
-### 🔒 Comprehensive CVE Protection
+### 🔍 Tested Against Known Vulnerabilities
 
-Our security test suite provides **verified protection** against real-world vulnerabilities:
+Our security test suite validates protection against real-world vulnerabilities:
 
-#### Comprehensive CVE Protection
 - **CVE-2022-21658** (TOCTOU): Race condition prevention through atomic path processing
 - **CVE-2019-9855** (LibreOffice): Protection against path equivalence handling flaws
 - **CVE-2017-17793** (BlogoText): Prevention of backup file access through predictable short names
 - **CVE-2020-12279** (Git): Protection against NTFS short name equivalence confusion
-- **CVE-2005-0471** (Java): Mitigation of predictable temporary file names
-- **CVE-2002-2413** (WebSite Pro): Prevention of script source code disclosure via filename equivalence
-- **CVE-2001-0795** (LiteServe): Protection against script source disclosure through name variation
-
-#### Additional Security Protections
-- **Unicode Security**: Homoglyph detection, zero-width character preservation, and normalization bypass prevention
+- **Unicode Bypasses**: Homoglyph detection, zero-width character preservation, normalization attack prevention
 - **Path Traversal**: Comprehensive `..` resolution with jail escape detection and UNC share boundary enforcement
-- **Symlink Attacks**: Cycle detection, visited set manipulation prevention, and nested directory attack mitigation
-
-### 🛡️ Battle-Tested Security Validation
-
-Our comprehensive security test suite specifically validates protection against real-world vulnerabilities found in other path handling libraries:
-
-#### Filesystem Security
-- **UNC Path Traversal Prevention**: Comprehensive testing of Windows UNC paths to prevent escape from share roots using `..` traversal
-- **Device Namespace Security**: Tests for `\\.\` and `\\?\GLOBALROOT\` path handling to prevent device namespace exploitation
-- **NTFS Alternate Data Streams**: Windows-specific tests for ADS attack vectors that can hide malicious content
-- **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
-
-#### Unicode & Encoding Security  
-- **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths, including homoglyph and zero-width character preservation
-- **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)
-- **Case Sensitivity Bypasses**: Tests on case-insensitive filesystems to prevent case-based security bypasses
-- **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
-
-#### Symlink & Race Condition Security
-- **Symlink Jail Escapes**: Comprehensive testing of symlinked directory attacks and nested symlink chains
-- **TOCTOU Race Conditions**: Tests against Time-of-Check-Time-of-Use attacks where symlinks are replaced between canonicalization and file access
-- **Symlink Cycle Detection**: Prevention of infinite loops and resource exhaustion through malicious symlink chains
-
-These tests ensure that `soft_canonicalize` doesn't inherit the security vulnerabilities that have affected other path canonicalization libraries, giving you confidence in production security-critical applications.
-
+- **Symlink Attacks**: Cycle detection, visited set manipulation prevention, nested directory attack mitigation
+- **NTFS Exploits**: Alternate Data Streams testing, device namespace security, filesystem boundary validation
 
 ## What is Path Canonicalization?
 
@@ -171,13 +119,6 @@ Each crate serves different use cases. Choose based on your primary need:
 | Windows UNC path support      | ✅                   | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
 | Zero dependencies             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
 | Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                 | ✅                   |
-
-### When to Choose `soft_canonicalize`
-
-- **Path comparison**: Need to check if two paths refer to the same location
-- **Non-existing paths**: Working with planned files, build outputs, or future locations  
-- **Cross-platform**: Want consistent behavior across Windows, macOS, and Linux
-- **Zero dependencies**: Prefer minimal dependency footprint
 
 ## Known Limitations
 
