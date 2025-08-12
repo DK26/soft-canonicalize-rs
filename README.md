@@ -30,7 +30,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.2.3"
+soft-canonicalize = "0.2.4"
 ```
 
 ### Code Example

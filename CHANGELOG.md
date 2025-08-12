@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2025-08-13
+
 ### Added
 - **Windows 8.3 CVE Protection Suite**: Comprehensive protection against 6 known Windows short filename vulnerabilities:
   - CVE-2019-9855 (LibreOffice): Protection against Windows 8.3 path equivalence handling flaws
@@ -16,20 +18,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CVE-2002-2413 (WebSite Pro): Prevention of script source disclosure via 8.3 equivalent filenames
   - CVE-2001-0795 (LiteServe): Protection against CGI script source disclosure through 8.3 exploitation
 - **Security Audit Short Filename Module**: New `src/tests/security_audit/short_filename_bypass.rs` (3 test suites)
-- **Windows 8.3 CVE Test Suite**: New `tests/windows_8_3_cve_tests.rs` with 7 comprehensive CVE-specific tests
-- **8.3 Detection Validation Tests**: New `tests/test_8_3_detection_validation.rs` (2 security-critical tests)
-- **Performance Regression Protection**: New `tests/blackbox_performance_regression.rs` (5 algorithmic complexity tests)
+- **Windows 8.3 CVE Test Suite**: New `tests/windows_8_3_cve_tests.rs` with 7 comprehensive CVE-specific tests (504 lines)
+- **8.3 Detection Validation Tests**: New `tests/test_8_3_detection_validation.rs` (2 security-critical tests, 150 lines)
+- **Performance Regression Protection**: New `tests/blackbox_performance_regression.rs` with advanced performance testing:
+  - Memory stress testing with very wide paths (1000+ components)
+  - Tilde component stress testing (500 iterations)
+  - Windows-specific performance attack vectors
+  - Concurrent performance stress testing (multi-threaded validation)
+  - Algorithmic complexity validation preventing quadratic-time attacks
 - **Edge Case Fuzzing Suite**: New `tests/blackbox_edge_case_fuzzing.rs` (4 boundary condition and Unicode tests)
 
 ### Security
 - **Unicode Filename Security**: Protection against Unicode characters with tildes being misinterpreted as 8.3 short names
 - **Cross-Platform Security Validation**: Enhanced test coverage ensuring security properties work across Windows and Unix
-- **Performance Attack Prevention**: Algorithmic complexity validation preventing quadratic-time attacks
-- **Memory Exhaustion Protection**: Stress testing against memory exhaustion and resource consumption attacks
-- **Concurrent Security Testing**: Multi-threaded stress testing ensuring security under concurrent load
+- **Performance Attack Prevention**: Comprehensive algorithmic complexity validation with memory exhaustion protection
+- **Memory Exhaustion Protection**: Stress testing against memory consumption attacks with 4000+ character components
+- **Concurrent Security Testing**: Multi-threaded stress testing (4 threads, 100 iterations each) ensuring security under concurrent load
 
 ### Improved
-- **Test Organization**: Enhanced Windows-only test organization with proper `#[cfg(windows)]` guards for CI compatibility
+- **Test Module Organization**: Enhanced Windows-only test organization with proper module naming:
+  - Renamed `mod tests` to `mod windows_unc_tests` in UNC-related test files for better organization
+  - Improved `#[cfg(windows)]` guards for better CI compatibility across platforms
+- **Performance Testing**: Advanced memory stress testing with component counts up to 1000 and individual component sizes up to 4000 characters
 - **Documentation**: Updated README with comprehensive CVE protection details and security feature documentation
 - **Cross-Platform CI**: Improved CI configuration preventing Linux pipeline issues with Windows-only code
 
