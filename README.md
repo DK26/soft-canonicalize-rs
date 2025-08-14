@@ -15,7 +15,7 @@
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
 **⚡ Fast** - Mixed workload median performance: Windows 1.83x, Linux 3.56x faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Secure** - 182 comprehensive tests including CVE protections and path traversal prevention  
+**🔒 Robust** - 250 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -30,7 +30,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.2.4"
+soft-canonicalize = "0.2"
 ```
 
 ### Code Example
@@ -58,27 +58,28 @@ assert_eq!(
 
 ### Test Coverage
 
-**182 comprehensive tests** including:
+**250 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-- **51 security penetration tests** covering CVE protections and path traversal attacks  
+- **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
 - **42 Python pathlib test suite adaptations** for cross-language validation
-- **25 Windows UNC path tests** including unicode preservation, long paths, and mixed separators
-- **25 platform-specific tests** for Windows, macOS, and Linux edge cases
-- **28 performance and stress tests** validating behavior under various conditions
+- **45+ Windows UNC path tests** including unicode preservation, long paths, and mixed separators
+- **50+ platform-specific tests** for Windows, macOS, and Linux edge cases
+- **22+ performance and stress tests** validating behavior under various conditions
 
-### 🔍 Tested Against Known Vulnerabilities
+### 🔍 Tested Against Path Handling Edge Cases
 
-Our security test suite validates protection against real-world vulnerabilities:
+Our comprehensive test suite validates consistent canonicalization behavior across various challenging scenarios:
 
-- **CVE-2022-21658** (TOCTOU): Race condition prevention through atomic path processing
-- **CVE-2019-9855** (LibreOffice): Protection against path equivalence handling flaws
-- **CVE-2017-17793** (BlogoText): Prevention of backup file access through predictable short names
-- **CVE-2020-12279** (Git): Protection against NTFS short name equivalence confusion
-- **Unicode Bypasses**: Homoglyph detection, zero-width character preservation, normalization attack prevention
-- **Path Traversal**: Comprehensive `..` resolution with jail escape detection and UNC share boundary enforcement
-- **Symlink Attacks**: Cycle detection, visited set manipulation prevention, nested directory attack mitigation
-- **NTFS Exploits**: Alternate Data Streams testing, device namespace security, filesystem boundary validation
+- **Race Condition Robustness**: Consistent canonicalization behavior even when filesystem changes during processing
+- **Symlink Cycle Protection**: Detects and rejects circular symlink references to prevent infinite loops
+- **Malicious Stream Detection**: Validates Windows NTFS Alternate Data Stream syntax to reject malformed or suspicious patterns
+- **Path Equivalence Handling**: Consistent behavior with various path representations and edge cases
+- **Short Name Handling**: Proper canonicalization behavior with Windows 8.3 short names
+- **Long Path Support**: Correct handling of Windows extended-length paths and NTFS features
+- **Unicode Normalization**: Consistent handling of Unicode characters, zero-width characters, and normalization forms
+- **Path Resolution**: Comprehensive `..` resolution with cycle detection and boundary enforcement
+- **Cross-Platform Consistency**: Comprehensive testing across Windows, macOS, and Linux filesystem behaviors
 
 ## What is Path Canonicalization?
 
@@ -92,7 +93,7 @@ This is essential for:
 - **Deduplication**: Avoiding duplicate operations on the same file accessed via different paths  
 - **Build Systems**: Resolving output paths and dependencies accurately
 - **Future Path Planning**: Computing paths for files that will be created later
-- **Security Applications**: Preventing path traversal attacks and ensuring paths stay within intended boundaries
+- **Path Validation**: Providing consistent, normalized paths for validation and boundary checking in applications
 
 The "soft" aspect means we can canonicalize paths even when the target doesn't exist yet - extending traditional canonicalization to work with planned or future file locations.
 
