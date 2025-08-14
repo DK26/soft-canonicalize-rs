@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2025-08-14
+
+### Added
+- **Windows NTFS Alternate Data Stream (ADS) Security Validation**: Comprehensive protection against ADS-based path traversal attacks
+  - New `validate_windows_ads_layout()` function to detect malicious ADS patterns
+  - Early and late ADS validation to prevent CVE-2025-8088 style attacks (e.g., `file.txt:..\\..\\evil.exe`)
+  - Stream name validation for proper syntax, length limits, and forbidden content
+  - Type token validation for NTFS stream types (`$DATA`, `$BITMAP`, etc.)
+  - Unicode manipulation attack prevention (zero-width characters, BOM, etc.)
+  - Reserved device name protection in stream names
+- **Comprehensive ADS Attack Vector Test Suite**: 16 new test files covering sophisticated attack patterns:
+  - `ads_advanced_exploits.rs`: Type token confusion, chaining attacks, filesystem limit exploitation
+  - `ads_comprehensive_security.rs`: CVE patterns and malicious attack vectors
+  - `ads_cross_platform_security.rs`: Cross-platform ADS security validation
+  - `ads_performance_exploits.rs`: Memory exhaustion and DoS attack prevention
+  - `ads_race_conditions.rs`: TOCTOU attack protection during ADS parsing
+  - `ads_security_verification.rs`: High-risk attack vector verification
+  - `archive_ads_exploits.rs`: Archive-style path pattern tests
+  - `crypto_ads_bypass.rs`: Cryptographic bypass vulnerability tests
+  - `encoding_penetration.rs`: Advanced Unicode/encoding attack tests
+  - `filesystem_boundary_attacks.rs`: Filesystem limits and boundary condition tests
+  - `filesystem_metadata_attacks.rs`: Extended attributes and metadata exploitation tests
+  - `kernel_boundary_ads.rs`: Kernel/syscall boundary vulnerability tests
+  - `protocol_confusion.rs`: Protocol confusion attack tests (UNC, HTTP, file URIs)
+  - `unicode_advanced_attacks.rs`: Sophisticated Unicode-based attack vectors
+  - `windows_ads_traversal.rs`: Windows-specific ADS traversal and CVE-2025-8088 regression tests
+  - `windows_std_ads_behavior.rs`: Empirical `std::fs::canonicalize` behavior validation
+
+### Security
+- **CVE-2025-8088 Protection**: Specific protection against WinRAR-style ADS path traversal attacks
+- **Malicious Stream Detection**: Validates NTFS ADS syntax, rejecting patterns like `file:../../../evil.exe`
+- **Unicode Normalization Security**: Consistent behavior with Unicode normalization forms and edge cases
+- **Path Boundary Validation**: Comprehensive testing of path resolution boundaries and component limits
+- **Symlink Cycle Protection**: Enhanced detection and rejection of circular symlink references
+- **Race Condition Robustness**: Protection against filesystem changes during canonicalization
+
+### Improved
+- **CI Quality**: Added MSRV Clippy auto-fix to CI scripts (`ci-local.ps1`, `ci-local.sh`) for better code quality
+- **Documentation**: Updated to reflect 250+ comprehensive tests (previously 182)
+- **Security Messaging**: Improved focus on robustness validation rather than penetration testing terminology
+- **Test Coverage**: Expanded from 182 to 250+ comprehensive tests including Windows-specific attack vectors
+- **Error Handling**: Enhanced InvalidInput error reporting for malformed ADS patterns
+
+### Fixed
+- **Trailing Whitespace**: Removed trailing whitespace in documentation causing formatting check failures
+
 ## [0.2.4] - 2025-08-13
 
 ### Added

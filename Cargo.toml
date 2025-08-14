@@ -1,6 +1,6 @@
 [package]
 name = "soft-canonicalize"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Path canonicalization that works with non-existing paths."
@@ -17,7 +17,7 @@ rust-version = "1.70.0"
 # Zero dependencies - pure std library implementation
 
 [dev-dependencies]
-tempfile = "3.0"
+tempfile = "3.8"
 
 [[example]]
 name = "basic_usage"

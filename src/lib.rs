@@ -10,18 +10,18 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 182 tests including std::fs::canonicalize compatibility tests,
-//! security penetration tests, CVE protections, and cross-platform validation.**
+//! **🔬 Comprehensive test suite with 250 tests including std::fs::canonicalize compatibility tests,
+//! robustness validation, edge case handling, and cross-platform validation.**
 //!
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
 //! - **⚡ Fast** - Mixed workload median performance: Windows 1.83x, Linux 3.56x faster than Python's pathlib  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Security-hardened** - 182 tests including CVE protections and path traversal prevention  
-//! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and jail escape prevention
+//! - **🔒 Robust** - 250 tests including symlink cycle protection, malicious stream validation, and edge case handling  
+//! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and boundary enforcement
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling and Unicode preservation
-//! - **🔧 Zero dependencies** - Only uses std library with extensive security validation
+//! - **🔧 Zero dependencies** - Only uses std library with comprehensive edge case validation
 //!
 //! For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory.
 //!
@@ -33,7 +33,7 @@
 //! ### Cargo.toml
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.2.4"
+//! soft-canonicalize = "0.2"
 //! ```
 //!
 //! ### Code Example
@@ -86,28 +86,29 @@
 //!
 //! ### Test Coverage
 //!
-//! **120 comprehensive tests** including:
+//! **250 comprehensive tests** including:
 //!
-//! - **10 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-//! - **32 security penetration tests** covering CVE-2022-21658 and path traversal attacks  
+//! - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
+//! - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
 //! - **Python pathlib test suite adaptations** for cross-language validation
 //! - **Platform-specific tests** for Windows, macOS, and Linux edge cases
 //! - **Performance and stress tests** validating behavior under various conditions
 //!
-//! ### 🔍 Tested Against Known Vulnerabilities
+//! ### 🔍 Tested Against Path Handling Edge Cases
 //!
-//! Our comprehensive security test suite specifically validates protection against real-world vulnerabilities found in other path handling libraries:
+//! Our comprehensive test suite validates consistent canonicalization behavior across various challenging scenarios:
 //!
-//! - **CVE-2022-21658 Race Conditions**: Tests against Time-of-Check-Time-of-Use (TOCTOU) attacks where symlinks are replaced between canonicalization and file access
-//! - **Unicode Normalization Bypasses**: Protection against attacks using Unicode normalization to disguise malicious paths
-//! - **Double-Encoding Attacks**: Validates that percent-encoded sequences aren't automatically decoded (preventing bypass attempts)
-//! - **Case Sensitivity Bypasses**: Tests on case-insensitive filesystems to prevent case-based security bypasses
-//! - **Symlink Jail Escapes**: Comprehensive testing of symlinked directory attacks and nested symlink chains
-//! - **NTFS Alternate Data Streams**: Windows-specific tests for ADS attack vectors that can hide malicious content
+//! - **Race Condition Robustness**: Tests against filesystem changes during canonicalization (symlinks replaced, directories modified) to ensure consistent behavior
+//! - **Symlink Cycle Protection**: Detects and rejects circular symlink references using visited set tracking to prevent infinite loops
+//! - **Malicious Stream Detection**: Validates Windows NTFS Alternate Data Stream syntax, rejecting malformed patterns like `file:../../../evil.exe`
+//! - **Unicode Normalization Handling**: Consistent behavior with Unicode normalization forms and edge cases
+//! - **Encoding Consistency**: Validates that percent-encoded sequences are handled consistently across platforms
+//! - **Case Sensitivity Handling**: Consistent behavior on case-insensitive filesystems
+//! - **Path Boundary Validation**: Comprehensive testing of path resolution boundaries and component limits
 //! - **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
-//! - **Explicit Null Byte Detection**: Consistent error handling across platforms (unlike OS-dependent behavior)
+//! - **Explicit Null Byte Handling**: Consistent error handling across platforms (unlike OS-dependent behavior)
 //!
-//! These tests ensure that `soft_canonicalize` doesn't inherit the security vulnerabilities that have affected other path canonicalization libraries, giving you confidence in production security-critical applications.
+//! These tests ensure that `soft_canonicalize` provides consistent, predictable behavior while protecting against common path-related attack vectors during the canonicalization process itself.
 //!
 //! ## Performance & Benchmarks
 //!
@@ -322,8 +323,18 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::env::current_dir()?.join(path)
     };
 
+    // Windows-only EARLY ADS validation (before lexical normalization) so that patterns like
+    //   decoy.txt:..\\..\\evil.exe are rejected before `..` components collapse and hide intent.
+    #[cfg(windows)]
+    validate_windows_ads_layout(&absolute_path)?;
+
     // Stage 2: pre-normalize lexically (resolve . and .. without touching the filesystem)
     let normalized_path = simple_normalize_path(&absolute_path);
+
+    // Windows-only LATE ADS validation (defense in depth after normalization) in case normalization
+    // produces a new final colon component scenario.
+    #[cfg(windows)]
+    validate_windows_ads_layout(&normalized_path)?;
 
     // Stage 3: fast-path — try fs::canonicalize once; for NotFound or non-fatal errors continue
     match fs::canonicalize(&normalized_path) {
@@ -455,6 +466,164 @@ fn is_incomplete_unc(p: &Path) -> bool {
         return server.is_some() && share.is_none();
     }
     false
+}
+
+#[cfg(windows)]
+fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {
+    use std::path::Component;
+    // Collect normal components (exclude prefix/root for positional analysis)
+    let comps: Vec<_> = p
+        .components()
+        .filter(|c| matches!(c, Component::Normal(_)))
+        .collect();
+    if comps.len() <= 1 {
+        return Ok(()); // Nothing to validate in single-component cases
+    }
+    for (i, comp) in comps.iter().enumerate() {
+        if let Component::Normal(name) = comp {
+            let s = name.to_string_lossy();
+            if s.contains(':') {
+                if i < comps.len() - 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS placement: colon-containing component '{s}' must be final"),
+                    ));
+                }
+                // Split into base + stream [+ type]
+                let parts: Vec<&str> = s.split(':').collect();
+                if parts.len() < 2 {
+                    continue; // shouldn't happen; contains(':') implies >=2 parts
+                }
+                if parts.len() > 3 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "invalid NTFS ADS stream: too many colons in final component '{s}'"
+                        ),
+                    ));
+                }
+                let stream_part = parts[1];
+                if stream_part.is_empty()
+                    || stream_part == "."
+                    || stream_part == ".."
+                    || stream_part.trim().is_empty()
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS stream name in '{s}'"),
+                    ));
+                }
+                // Reject whitespace manipulation (leading/trailing whitespace in stream names)
+                if stream_part != stream_part.trim() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS stream name contains leading/trailing whitespace in '{s}'"),
+                    ));
+                }
+                // Reject control characters and null bytes in stream names
+                if stream_part.chars().any(|c| c.is_control() || c == '\0') {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "invalid NTFS ADS stream name contains control characters in '{s}'"
+                        ),
+                    ));
+                }
+                // SECURITY: Reject Unicode manipulation attacks (zero-width chars, BOM, etc.)
+                if stream_part.chars().any(|c| {
+                    matches!(
+                        c,
+                        '\u{200B}' |   // Zero-width space
+                        '\u{200C}' |   // Zero-width non-joiner  
+                        '\u{200D}' |   // Zero-width joiner
+                        '\u{FEFF}' |   // Byte order mark
+                        '\u{200E}' |   // Left-to-right mark
+                        '\u{200F}' |   // Right-to-left mark
+                        '\u{202A}' |   // Left-to-right embedding
+                        '\u{202B}' |   // Right-to-left embedding
+                        '\u{202C}' |   // Pop directional formatting
+                        '\u{202D}' |   // Left-to-right override
+                        '\u{202E}' // Right-to-left override
+                    )
+                }) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS stream name contains Unicode manipulation characters in '{s}'"),
+                    ));
+                }
+                // Reject overly long stream names (NTFS limit ~255 chars for stream name)
+                if stream_part.len() > 255 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS stream name too long in '{s}'"),
+                    ));
+                }
+                // Disallow separators or traversal markers anywhere after first colon
+                let after_first_colon = &s[s.find(':').unwrap() + 1..];
+                if after_first_colon.contains(['\\', '/'])
+                    || after_first_colon.contains("..\\")
+                    || after_first_colon.contains("../")
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid NTFS ADS stream name contains path separator or traversal in '{s}'"),
+                    ));
+                }
+                // Additional security: reject Windows device names as stream names to prevent confusion
+                let stream_upper = stream_part.to_ascii_uppercase();
+                if matches!(
+                    stream_upper.as_str(),
+                    "CON"
+                        | "PRN"
+                        | "AUX"
+                        | "NUL"
+                        | "COM1"
+                        | "COM2"
+                        | "COM3"
+                        | "COM4"
+                        | "COM5"
+                        | "COM6"
+                        | "COM7"
+                        | "COM8"
+                        | "COM9"
+                        | "LPT1"
+                        | "LPT2"
+                        | "LPT3"
+                        | "LPT4"
+                        | "LPT5"
+                        | "LPT6"
+                        | "LPT7"
+                        | "LPT8"
+                        | "LPT9"
+                ) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "invalid NTFS ADS stream name uses reserved device name '{stream_part}'"
+                        ),
+                    ));
+                }
+                if parts.len() == 3 {
+                    let ty = parts[2];
+                    // Allow NTFS stream type tokens: $ + alphanumeric/underscore (case-insensitive for real types like $DATA, $BITMAP)
+                    let valid_type = ty.starts_with('$')
+                        && ty.len() > 1
+                        && ty
+                            .chars()
+                            .skip(1)
+                            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        && !ty.chars().any(|c| c.is_control() || c.is_whitespace());
+                    if !valid_type {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("invalid NTFS ADS stream type '{ty}' in component '{s}'"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
