@@ -103,7 +103,7 @@
 //! - **Malicious Stream Detection**: Validates Windows NTFS Alternate Data Stream syntax, rejecting malformed patterns like `file:../../../evil.exe`
 //! - **Unicode Normalization Handling**: Consistent behavior with Unicode normalization forms and edge cases
 //! - **Encoding Consistency**: Validates that percent-encoded sequences are handled consistently across platforms
-//! - **Case Sensitivity Handling**: Consistent behavior on case-insensitive filesystems 
+//! - **Case Sensitivity Handling**: Consistent behavior on case-insensitive filesystems
 //! - **Path Boundary Validation**: Comprehensive testing of path resolution boundaries and component limits
 //! - **Filesystem Boundary Testing**: Edge cases around filename length limits and component count boundaries
 //! - **Explicit Null Byte Handling**: Consistent error handling across platforms (unlike OS-dependent behavior)
