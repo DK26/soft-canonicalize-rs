@@ -24,7 +24,7 @@ fn expect_invalid(res: io::Result<impl std::fmt::Debug>, pattern: &str) {
 fn test_ads_stream_traversal_rejected() -> io::Result<()> {
     let tmp = tempfile::tempdir()?;
     let base = tmp.path().join("decoy.txt");
-    fs::write(&base, b"decoy")?;
+    fs::write(base, b"decoy")?;
 
     let cases = [
         "decoy.txt:..\\..\\evil.exe",
@@ -176,5 +176,30 @@ fn test_invalid_stream_type_rejected() -> io::Result<()> {
     let pattern = "file.txt:stream:DATA";
     let path = tmp.path().join(pattern);
     expect_invalid(soft_canonicalize(path), pattern);
+    Ok(())
+}
+
+#[test]
+fn test_ads_traversal_all_existence_scenarios_rejected() -> io::Result<()> {
+    let tmp = tempfile::tempdir()?;
+
+    // Case A: fully existing file
+    let base = tmp.path().join("decoy.txt");
+    fs::write(base, b"decoy")?;
+    let raw_a = "decoy.txt:..\\..\\evil.exe";
+    let path_a = tmp.path().join(raw_a);
+    expect_invalid(soft_canonicalize(path_a), raw_a);
+
+    // Case B: partially existing (directory exists, file does not)
+    let subdir = tmp.path().join("partial_dir");
+    fs::create_dir(subdir)?;
+    let raw_b = "partial_dir/decoy.txt:..\\..\\evil.exe";
+    let path_b = tmp.path().join(raw_b);
+    expect_invalid(soft_canonicalize(path_b), raw_b);
+
+    // Case C: completely non-existing path — simple fully-qualified absolute path
+    let raw_c = r"C:\no_such_dir\no_such_file.txt:..\..\evil.exe";
+    expect_invalid(soft_canonicalize(raw_c), raw_c);
+
     Ok(())
 }
