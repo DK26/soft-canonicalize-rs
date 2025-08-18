@@ -404,18 +404,31 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     }
 
     // Stage 5: discover the deepest existing prefix and resolve symlinks inline as encountered
-    let (existing_prefix, existing_count, symlink_seen) =
+    let (existing_prefix, existing_count, _symlink_seen) =
         compute_existing_prefix(&root_prefix, &components)?;
 
-    // Stage 6: Build the base result; optionally canonicalize the anchor once if any symlink was seen.
+    // Stage 6: Build the base result; normalize the deepest existing ancestor across all platforms.
     let mut base = existing_prefix;
-
-    // Rationale: If we didn't resolve any symlink, the existing prefix already reflects the
-    // filesystem's view (case, UNC, etc.). If we did, canonicalize the existing prefix once
-    // to normalize casing/UNC details. The existing prefix should exist by construction.
-    if symlink_seen {
-        if let Ok(canon) = fs::canonicalize(&base) {
-            base = canon;
+    if existing_count > 0 {
+        // Identify deepest existing anchor (defensive in case base points at a symlink whose target doesn't exist)
+        let mut anchor = base.as_path();
+        while !anchor.exists() {
+            if let Some(p) = anchor.parent() {
+                anchor = p;
+            } else {
+                break;
+            }
+        }
+        if anchor.exists() {
+            if let Ok(canon_anchor) = fs::canonicalize(anchor) {
+                // Rebuild base as: canonicalized anchor + relative suffix
+                let suffix = base.strip_prefix(anchor).ok();
+                let mut rebuilt = canon_anchor;
+                if let Some(suf) = suffix {
+                    rebuilt.push(suf);
+                }
+                base = rebuilt;
+            }
         }
     }
 
@@ -425,7 +438,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // while avoiding extra syscalls in the common case.
     #[cfg(windows)]
     {
-        if !symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
+        if !_symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
             if let Ok(canon_base) = fs::canonicalize(&base) {
                 base = canon_base;
             }
