@@ -357,3 +357,86 @@ fn test_unix_specific_paths() -> std::io::Result<()> {
 
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_linux_bin_alias_resolves_for_nonexisting_tail() -> std::io::Result<()> {
+    // Many distros link /bin -> /usr/bin. Ensure our result matches canonicalize(base)+tail.
+    let leaf = "softcanon_nonexist_linux_bin_1.txt";
+    // If /bin is missing or inaccessible, treat as not applicable
+    let Ok(base) = std::fs::canonicalize("/bin") else {
+        return Ok(());
+    };
+    let got = soft_canonicalize(format!("/bin/{leaf}"))?;
+    let expected = base.join(leaf);
+    assert_eq!(got, expected);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_linux_var_run_alias_resolves_for_nonexisting_tail() -> std::io::Result<()> {
+    // Many distros link /var/run -> /run. Ensure our result matches canonicalize(base)+tail.
+    let leaf = "softcanon_nonexist_linux_varrun_1.pid";
+    let Ok(base) = std::fs::canonicalize("/var/run") else {
+        return Ok(());
+    };
+    let got = soft_canonicalize(format!("/var/run/{leaf}"))?;
+    let expected = base.join(leaf);
+    assert_eq!(got, expected);
+    Ok(())
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_symlink_ancestor_nonexisting_tail_matches_std() -> std::io::Result<()> {
+    // Create a directory symlink to an existing target dir. If symlink creation is denied,
+    // skip the test to avoid flakiness on environments without privilege.
+    use std::fs;
+    let td = tempfile::tempdir()?;
+    let base = td.path();
+    let target = base.join("target_dir");
+    fs::create_dir(&target)?;
+    let link = base.join("link_dir");
+
+    match std::os::windows::fs::symlink_dir(&target, &link) {
+        Ok(()) => {
+            let leaf = "child_nonexist.txt";
+            let got = soft_canonicalize(link.join(leaf))?;
+            let expected = std::fs::canonicalize(&target)?.join(leaf);
+            assert_eq!(got, expected);
+        }
+        Err(e) => {
+            eprintln!("Skipping symlink ancestor test due to symlink privilege error: {e}");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_macos_tempdir_nonexisting_tail_uses_private_var() -> std::io::Result<()> {
+    // On macOS, ensure that when appending a non-existing tail to a TempDir base (often under /var),
+    // the result normalizes to the canonical /private/var anchor.
+    let td = tempfile::tempdir()?;
+    let base = td.path();
+    let child = base.join("softcanon_nonexist_1.txt");
+
+    let got = soft_canonicalize(&child)?;
+    let expected = std::fs::canonicalize(base)?.join("softcanon_nonexist_1.txt");
+    assert_eq!(got, expected);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_macos_var_tmp_nonexisting_tail_normalizes_to_private() -> std::io::Result<()> {
+    // /var/tmp exists but is an alias; verify we stabilize to /private/var/tmp for non-existing tails
+    let leaf = "softcanon_ci_unique_abcd1234.txt"; // extremely unlikely to exist
+    let input = format!("/var/tmp/{leaf}");
+
+    let got = soft_canonicalize(&input)?;
+    let expected = std::fs::canonicalize("/var/tmp")?.join(leaf);
+    assert_eq!(got, expected);
+    Ok(())
+}

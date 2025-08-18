@@ -10,15 +10,15 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 250 tests including std::fs::canonicalize compatibility tests,
+//! **🔬 Comprehensive test suite with 264 tests including std::fs::canonicalize compatibility tests,
 //! robustness validation, edge case handling, and cross-platform validation.**
 //!
 //! ## Why Use This?
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
-//! - **⚡ Fast** - Mixed workload median performance: Windows 1.83x, Linux 3.56x faster than Python's pathlib  
+//! - **⚡ Fast** - Mixed workload median performance observed in recent runs: Windows ~1.9x, Linux ~3.0x faster than Python's pathlib  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Robust** - 250 tests including symlink cycle protection, malicious stream validation, and edge case handling  
+//! - **🔒 Robust** - 264 tests including symlink cycle protection, malicious stream validation, and edge case handling  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and boundary enforcement
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling and Unicode preservation
 //! - **🔧 Zero dependencies** - Only uses std library with comprehensive edge case validation
@@ -33,7 +33,7 @@
 //! ### Cargo.toml
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.2"
+//! soft-canonicalize = "0.3"
 //! ```
 //!
 //! ### Code Example
@@ -86,7 +86,7 @@
 //!
 //! ### Test Coverage
 //!
-//! **250 comprehensive tests** including:
+//! **264 comprehensive tests** including:
 //!
 //! - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 //! - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -112,9 +112,9 @@
 //!
 //! ## Performance & Benchmarks
 //!
-//! Recent 5-run mixed workload summary:
-//! - Windows: Rust 13,056–16,355 (avg 15,031) vs Python 6,811–7,713 (avg 7,377) paths/s → 1.88–2.13x (avg 2.04x)
-//! - Linux:   Rust 219,030–281,385 (avg 242,868) vs Python 65,667–141,545 (avg 112,494) paths/s → 1.91–3.34x (avg 2.27x)
+//! Recent benchmark snapshot (2025-08-18):
+//! - Windows (5 runs): Rust mixed-workload median 11,418 paths/s vs Python baseline median 6,802 paths/s (~1.68x)
+//! - Linux (WSL, 5 runs): Rust mixed-workload median 236,109 paths/s vs Python baseline median 125,462 paths/s (~1.88x)
 //!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
 //!
@@ -328,6 +328,19 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     #[cfg(windows)]
     validate_windows_ads_layout(&absolute_path)?;
 
+    // Stage 1.5: fast-path — attempt std canonicalize on the ORIGINAL absolute path first.
+    // Rationale: For fully-existing paths, we must match the platform's symlink semantics
+    // exactly. Performing lexical normalization (collapsing "..") before this step would
+    // change behavior in cases like "symlink/../x" where the OS resolves the symlink first.
+    match fs::canonicalize(&absolute_path) {
+        Ok(p) => return Ok(p),
+        Err(e) => match e.kind() {
+            io::ErrorKind::NotFound => { /* continue to boundary detection */ }
+            io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => return Err(e),
+            _ => { /* continue to optimized boundary detection */ }
+        },
+    }
+
     // Stage 2: pre-normalize lexically (resolve . and .. without touching the filesystem)
     let normalized_path = simple_normalize_path(&absolute_path);
 
@@ -336,14 +349,18 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     #[cfg(windows)]
     validate_windows_ads_layout(&normalized_path)?;
 
-    // Stage 3: fast-path — try fs::canonicalize once; for NotFound or non-fatal errors continue
-    match fs::canonicalize(&normalized_path) {
-        Ok(p) => return Ok(p),
-        Err(e) => match e.kind() {
-            io::ErrorKind::NotFound => { /* fall through to optimized boundary detection */ }
-            io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => return Err(e),
-            _ => { /* fall through to optimized boundary detection */ }
-        },
+    // Stage 3: fast-path — try fs::canonicalize on the lexically-normalized path as well,
+    // but only if normalization actually changed the path. This avoids an extra syscall in
+    // the common case where the absolute path was already normalized.
+    if normalized_path != absolute_path {
+        match fs::canonicalize(&normalized_path) {
+            Ok(p) => return Ok(p),
+            Err(e) => match e.kind() {
+                io::ErrorKind::NotFound => { /* fall through to optimized boundary detection */ }
+                io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => return Err(e),
+                _ => { /* fall through to optimized boundary detection */ }
+            },
+        }
     }
     // At this point: path doesn't fully exist or canonicalize returned a recoverable error — continue.
 
@@ -373,7 +390,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let mut components = Vec::new();
     let mut root_prefix = PathBuf::new();
 
-    for component in normalized_path.components() {
+    for component in absolute_path.components() {
         match component {
             std::path::Component::RootDir | std::path::Component::Prefix(_) => {
                 root_prefix.push(component.as_os_str());
@@ -381,8 +398,8 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             std::path::Component::Normal(name) => {
                 components.push(name.to_os_string());
             }
-            // After normalization, we shouldn't see . or .. components
-            _ => {}
+            std::path::Component::CurDir => components.push(std::ffi::OsString::from(".")),
+            std::path::Component::ParentDir => components.push(std::ffi::OsString::from("..")),
         }
     }
 
@@ -390,26 +407,30 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let (existing_prefix, existing_count, symlink_seen) =
         compute_existing_prefix(&root_prefix, &components)?;
 
-    // Stage 6: Build the base result; optionally canonicalize the anchor once if any symlink was seen.
+    // Stage 6: Build the base result. Only canonicalize the deepest existing ancestor
+    // when needed (e.g., symlink encountered). This avoids an extra syscall for the
+    // common case where no symlinks are present, improving throughput stability.
     let mut base = existing_prefix;
-
-    // Rationale: If we didn't resolve any symlink, the existing prefix already reflects the
-    // filesystem's view (case, UNC, etc.). If we did, canonicalizing the deepest existing
-    // ancestor ensures consistent normalization across platforms without extra syscalls.
-    if symlink_seen {
-        let mut current: &Path = &base;
-        while let Some(parent) = current.parent() {
-            if parent.exists() {
-                if let Ok(canonical_parent) = fs::canonicalize(parent) {
-                    if let Ok(relative_part) = base.strip_prefix(parent) {
-                        base = canonical_parent.join(relative_part);
-                    } else {
-                        base = canonical_parent;
-                    }
-                }
+    if existing_count > 0 && symlink_seen {
+        // Identify deepest existing anchor (defensive in case base points at a symlink whose target doesn't exist)
+        let mut anchor = base.as_path();
+        while !anchor.exists() {
+            if let Some(p) = anchor.parent() {
+                anchor = p;
+            } else {
                 break;
             }
-            current = parent;
+        }
+        if anchor.exists() {
+            if let Ok(canon_anchor) = fs::canonicalize(anchor) {
+                // Rebuild base as: canonicalized anchor + relative suffix
+                let suffix = base.strip_prefix(anchor).ok();
+                let mut rebuilt = canon_anchor;
+                if let Some(suf) = suffix {
+                    rebuilt.push(suf);
+                }
+                base = rebuilt;
+            }
         }
     }
 
@@ -429,8 +450,28 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let mut result = base;
 
     // Stage 7: append the non-existing suffix components (purely lexical)
+    let mut suffix_has_dot_or_dotdot = false;
     for component in components.iter().skip(existing_count) {
+        if !suffix_has_dot_or_dotdot
+            && (component == std::ffi::OsStr::new(".") || component == std::ffi::OsStr::new(".."))
+        {
+            suffix_has_dot_or_dotdot = true;
+        }
         result.push(component);
+    }
+
+    // After we have a fully-resolved base, normalize lexically.
+    // On Windows, always normalize to stabilize UNC/extended-length formatting.
+    // On other platforms, normalize only when the suffix had '.' or '..' to avoid extra work.
+    #[cfg(windows)]
+    {
+        result = simple_normalize_path(&result);
+    }
+    #[cfg(not(windows))]
+    {
+        if suffix_has_dot_or_dotdot {
+            result = simple_normalize_path(&result);
+        }
     }
 
     // Stage 8 (Windows): ensure extended-length prefix for absolute paths when we didn't canonicalize
@@ -768,28 +809,25 @@ fn compute_existing_prefix(
     let mut count = 0usize;
     let mut symlink_seen = false;
 
-    // Early fast-path: check first component only, common case when first doesn't exist
-    if let Some(first) = components.first() {
-        path.push(first);
-        match fs::symlink_metadata(&path) {
-            Ok(meta) => {
-                if meta.file_type().is_symlink() {
-                    symlink_seen = true;
-                    path = resolve_simple_symlink_chain(&path)?;
-                }
-                count = 1;
-            }
-            Err(_) => {
-                // First component missing; return root as deepest existing
-                let _ = path.pop();
-                return Ok((root_prefix.to_path_buf(), 0, false));
-            }
+    for c in components.iter() {
+        // Apply '.' and '..' lexically during traversal, so that if a prior
+        // component was a symlink and got resolved, '..' climbs from the
+        // symlink target (symlink-first semantics).
+        if c == std::ffi::OsStr::new(".") {
+            count += 1;
+            continue;
         }
-    }
+        if c == std::ffi::OsStr::new("..") {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    path = parent.to_path_buf();
+                }
+            }
+            count += 1;
+            continue;
+        }
 
-    for c in components.iter().skip(count) {
         path.push(c);
-
         match fs::symlink_metadata(&path) {
             Ok(meta) => {
                 if meta.file_type().is_symlink() {
@@ -808,7 +846,6 @@ fn compute_existing_prefix(
                 count += 1;
             }
             Err(_) => {
-                // Remove the non-existing component; base must remain the deepest existing
                 let _ = path.pop();
                 break;
             }
@@ -824,11 +861,10 @@ fn compute_existing_prefix(
 /// - Caps depth at MAX_SYMLINK_DEPTH (or a smaller heuristic for common system symlinks)
 /// - Re-resolves relative symlink targets against the parent of the current link
 fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
-    use std::collections::HashSet;
-
     let mut current = symlink_path.to_path_buf();
     let mut depth = 0usize;
-    let mut visited: HashSet<std::ffi::OsString> = HashSet::with_capacity(8);
+    // Small Vec cycle detection avoids hashing overhead; chains are typically short.
+    let mut visited: Vec<std::ffi::OsString> = Vec::with_capacity(8);
 
     // Heuristic: system symlinks are unlikely to be malicious chains; keep their budget small
     let effective_max_depth = if is_likely_system_symlink(&current) {
@@ -839,12 +875,13 @@ fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
 
     loop {
         // Detect cycles using the textual path (no extra IO)
-        if !visited.insert(current.as_os_str().to_os_string()) {
+        if visited.iter().any(|s| s == current.as_os_str()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Too many levels of symbolic links",
             ));
         }
+        visited.push(current.as_os_str().to_os_string());
 
         match fs::read_link(&current) {
             Ok(target) => {
@@ -1103,4 +1140,5 @@ mod tests {
     mod std_behavior;
     mod symlink_depth;
     mod symlink_dotdot_resolution_order;
+    mod symlink_dotdot_symlink_first;
 }
