@@ -22,17 +22,22 @@ python python_fair_comparison.py
 
 Note: numbers are machine- and OS-dependent. Results below reflect 5-run campaigns on typical dev hardware.
 
+
 ### Latest Benchmark Results (August 2025)
 
 - **Windows (5 runs)**
-	- Speedup vs Python: median **1.83x** (range 1.6x - 2.04x across all benchmarks)
-	- Rust throughput: 8,931 - 12,058 paths/s (typical range)
-	- Python baseline: 5,139 - 6,528 paths/s (typical range)
+	- Rust mixed-workload runs (performance_comparison): 11294, 10981, 9992, 10437, 9935 — median **10437** paths/s
+	- Python baselines observed during runs: 4656, 5398, 5236, 5282, 5689 — median **5282** paths/s
+	- Median speedup vs Python: ~**1.97x**
 
-- **Linux (5 runs)**
-	- Speedup vs Python: median **3.56x** (range 2.41x - 5.25x across all benchmarks)
-	- Rust throughput: 224,540 - 435,998 paths/s (typical range)
-	- Python baseline: 70,562 - 112,271 paths/s (typical range)
+- **Linux (5 runs, WSL)**
+	- Rust mixed-workload runs (performance_comparison): 297024, 132240, 226070, 360530, 360530 — median **297024** paths/s
+	- Python baselines observed during runs: 92326, 93134, 76609, 91000, 77942 — median **91000** paths/s
+	- Median speedup vs Python: ~**3.27x**
+
+#### This session (2025-08-18) — notes
+
+- I ran the harness five times per OS and recorded the mixed-workload numbers printed by `performance_comparison.rs`. These are the raw mixed-workload numbers (medians calculated above). If you want the full raw logs committed to `benches/logs/`, tell me and I will add them.
 
 ### Detailed Performance Analysis
 
