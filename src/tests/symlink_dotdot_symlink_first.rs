@@ -141,11 +141,29 @@ fn symlink_first_with_existing_tail_matches_std_windows() -> std::io::Result<()>
     fs::create_dir_all(opt_sub.join("hello").join("world"))?;
     let test_path = jail.join("special").join("..").join("hello").join("world");
 
+    // Always assert our policy: resolve the symlinked component first, then apply `..`.
     let soft = soft_canonicalize(&test_path)?;
-    let stdp = fs::canonicalize(&test_path)?;
-    assert_eq!(soft, stdp);
-
     let expected = fs::canonicalize(&opt_sub)?.join("hello").join("world");
-    assert_eq!(soft, expected);
+    assert_eq!(
+        soft, expected,
+        "soft_canonicalize should resolve via symlink target for existing tails on Windows"
+    );
+
+    // Additionally, check std compatibility when the environment supports it.
+    // Some Windows environments (certain Server builds/configs) resolve `..`
+    // lexically before following the symlink, making `jail/hello/world` the
+    // effective lookup which does not exist. In that case, std::fs::canonicalize
+    // returns NotFound (ERROR_PATH_NOT_FOUND, code 3). Treat that as environment-specific
+    // and skip only the std-compat assertion.
+    match fs::canonicalize(&test_path) {
+        Ok(stdp) => assert_eq!(
+            soft, stdp,
+            "soft_canonicalize should match std when std resolves this path"
+        ),
+        Err(e) if e.kind() == io::ErrorKind::NotFound || e.raw_os_error() == Some(3) => {
+            eprintln!("note: std::fs::canonicalize returned NotFound for symlink/.. path on this Windows environment; skipping std-compat sub-assertion");
+        }
+        Err(e) => return Err(e),
+    }
     Ok(())
 }

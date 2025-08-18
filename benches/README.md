@@ -23,17 +23,18 @@ python python_fair_comparison.py
 Note: numbers are machine- and OS-dependent. Results below reflect 5-run campaigns on typical dev hardware.
 
 
+
 ### Latest Benchmark Results (August 2025)
 
 - **Windows (5 runs)**
-	- Rust mixed-workload runs (performance_comparison): 11294, 10981, 9992, 10437, 9935 — median **10437** paths/s
-	- Python baselines observed during runs: 4656, 5398, 5236, 5282, 5689 — median **5282** paths/s
-	- Median speedup vs Python: ~**1.97x**
+	- Rust mixed-workload runs (performance_comparison): 11418, 12705, 10295, 12818, 8195 — median **11418** paths/s
+	- Python baselines observed during runs: 6802, 4317, 7066, 7728, 6058 — median **6802** paths/s
+	- Median speedup vs Python: ~**1.68x**
 
 - **Linux (5 runs, WSL)**
-	- Rust mixed-workload runs (performance_comparison): 297024, 132240, 226070, 360530, 360530 — median **297024** paths/s
-	- Python baselines observed during runs: 92326, 93134, 76609, 91000, 77942 — median **91000** paths/s
-	- Median speedup vs Python: ~**3.27x**
+	- Rust mixed-workload runs (performance_comparison): 308014, 149445, 229300, 238743, 236109 — median **236109** paths/s
+	- Python baselines observed during runs: 79395, 108954, 158443, 175538, 125462 — median **125462** paths/s
+	- Median speedup vs Python: ~**1.88x**
 
 #### This session (2025-08-18) — notes
 

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improved
 - Symlink chain resolution algorithm and cycle detection (smaller allocation strategy and safer textual cycle checks).
 - Minor README and bench README clarifications; updated reported test count.
+ - Optimized Windows path handling (small runtime optimizations to path processing on Windows).
 
 ## [0.2.5] - 2025-08-14
 

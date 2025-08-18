@@ -10,7 +10,7 @@
 //! comparison, resolution of future file locations, and preprocessing paths before
 //! file creation.
 //!
-//! **🔬 Comprehensive test suite with 260 tests including std::fs::canonicalize compatibility tests,
+//! **🔬 Comprehensive test suite with 264 tests including std::fs::canonicalize compatibility tests,
 //! robustness validation, edge case handling, and cross-platform validation.**
 //!
 //! ## Why Use This?
@@ -18,7 +18,7 @@
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them  
 //! - **⚡ Fast** - Mixed workload median performance observed in recent runs: Windows ~1.9x, Linux ~3.0x faster than Python's pathlib  
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-//! - **🔒 Robust** - 260 tests including symlink cycle protection, malicious stream validation, and edge case handling  
+//! - **🔒 Robust** - 264 tests including symlink cycle protection, malicious stream validation, and edge case handling  
 //! - **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection and boundary enforcement
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with proper UNC/symlink handling and Unicode preservation
 //! - **🔧 Zero dependencies** - Only uses std library with comprehensive edge case validation
@@ -86,7 +86,7 @@
 //!
 //! ### Test Coverage
 //!
-//! **260 comprehensive tests** including:
+//! **264 comprehensive tests** including:
 //!
 //! - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 //! - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -113,8 +113,8 @@
 //! ## Performance & Benchmarks
 //!
 //! Recent benchmark snapshot (2025-08-18):
-//! - Windows (5 runs): Rust mixed-workload median ~10.4k paths/s vs Python baseline median ~5.3k paths/s (~1.9x)
-//! - Linux (WSL, 5 runs): Rust mixed-workload median ~297k paths/s vs Python baseline median ~91k paths/s (~3.0x)
+//! - Windows (5 runs): Rust mixed-workload median 11,418 paths/s vs Python baseline median 6,802 paths/s (~1.68x)
+//! - Linux (WSL, 5 runs): Rust mixed-workload median 236,109 paths/s vs Python baseline median 125,462 paths/s (~1.88x)
 //!
 //! *Performance varies by hardware and filesystem. Benchmarks run on Windows 11 and Linux.*
 //!
@@ -404,12 +404,14 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     }
 
     // Stage 5: discover the deepest existing prefix and resolve symlinks inline as encountered
-    let (existing_prefix, existing_count, _symlink_seen) =
+    let (existing_prefix, existing_count, symlink_seen) =
         compute_existing_prefix(&root_prefix, &components)?;
 
-    // Stage 6: Build the base result; normalize the deepest existing ancestor across all platforms.
+    // Stage 6: Build the base result. Only canonicalize the deepest existing ancestor
+    // when needed (e.g., symlink encountered). This avoids an extra syscall for the
+    // common case where no symlinks are present, improving throughput stability.
     let mut base = existing_prefix;
-    if existing_count > 0 {
+    if existing_count > 0 && symlink_seen {
         // Identify deepest existing anchor (defensive in case base points at a symlink whose target doesn't exist)
         let mut anchor = base.as_path();
         while !anchor.exists() {
@@ -438,7 +440,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // while avoiding extra syscalls in the common case.
     #[cfg(windows)]
     {
-        if !_symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
+        if !symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
             if let Ok(canon_base) = fs::canonicalize(&base) {
                 base = canon_base;
             }
@@ -448,13 +450,29 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let mut result = base;
 
     // Stage 7: append the non-existing suffix components (purely lexical)
+    let mut suffix_has_dot_or_dotdot = false;
     for component in components.iter().skip(existing_count) {
+        if !suffix_has_dot_or_dotdot
+            && (component == std::ffi::OsStr::new(".") || component == std::ffi::OsStr::new(".."))
+        {
+            suffix_has_dot_or_dotdot = true;
+        }
         result.push(component);
     }
 
-    // After we have a fully-resolved base, normalize lexically to clean up any
-    // remaining './' or '../' occurrences in the appended tail.
-    result = simple_normalize_path(&result);
+    // After we have a fully-resolved base, normalize lexically.
+    // On Windows, always normalize to stabilize UNC/extended-length formatting.
+    // On other platforms, normalize only when the suffix had '.' or '..' to avoid extra work.
+    #[cfg(windows)]
+    {
+        result = simple_normalize_path(&result);
+    }
+    #[cfg(not(windows))]
+    {
+        if suffix_has_dot_or_dotdot {
+            result = simple_normalize_path(&result);
+        }
+    }
 
     // Stage 8 (Windows): ensure extended-length prefix for absolute paths when we didn't canonicalize
     #[cfg(windows)]

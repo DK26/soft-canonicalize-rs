@@ -13,9 +13,9 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance observed in recent runs: Windows ~1.9x, Linux ~3.0x faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance observed in recent runs: Windows ~1.7x, Linux ~1.9x faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 260 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 264 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -55,7 +55,7 @@ assert_eq!(
 
 ### Test Coverage
 
-**260 comprehensive tests** including:
+**264 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
