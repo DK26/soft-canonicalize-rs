@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-08-18
+
+### Fixed (CRITICAL)
+- Fix path resolution order to prevent an edge case where a symlink followed by a `..` component could incorrectly resolve against the symlink's parent instead of the symlink target. This behavior was incorrect; the change restores the intended semantics and aligns behavior with platform expectations for existing paths by attempting `std::fs::canonicalize` on the original absolute path first, then lexically normalizing and retrying when appropriate. This is a bug fix, not a breaking behaviour change.
+
+### Added
+- Unit tests covering symlink-first `..` resolution semantics (`src/tests/symlink_dotdot_symlink_first.rs`).
+
+### Improved
+- Symlink chain resolution algorithm and cycle detection (smaller allocation strategy and safer textual cycle checks).
+- Minor README and bench README clarifications; updated reported test count.
+
 ## [0.2.5] - 2025-08-14
 
 ### Added
