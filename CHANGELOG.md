@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-09-07
+
+### Changed
+- **Major code refactoring**: Split monolithic `lib.rs` into focused modules for better maintainability:
+  - `src/error.rs` - Error handling utilities and path-aware error construction
+  - `src/normalize.rs` - Path normalization algorithms (`simple_normalize_path`)
+  - `src/prefix.rs` - Existing prefix computation and symlink handling (`compute_existing_prefix`)
+  - `src/symlink.rs` - Symlink chain resolution (`resolve_simple_symlink_chain`)
+  - `src/windows.rs` - Windows-specific functionality (ADS validation, UNC handling, 8.3 detection)
+
+### Improved
+- **Better error reporting**: ADS validation now uses path-aware error construction for clearer error messages
+- **Better symlink handling**: Improved `.` and `..` processing during symlink traversal with "symlink-first semantics"
+- **Performance optimization**: Restored fast-path optimization for non-existing first components
+- **Code organization**: Better separation of concerns and module boundaries for easier maintenance
+
+### Technical Details
+- Moved ~1000+ lines from `lib.rs` to specialized modules while preserving all functionality
+- Improved `validate_windows_ads_layout` error reporting with path-aware error construction
+- Maintained full API compatibility - no breaking changes to public interface
+- All 110+ unit tests and integration tests continue to pass
+
 ## [0.3.0] - 2025-08-18
 
 ### Fixed (CRITICAL)
