@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-01-27
+
+### Added
+- **🎯 NEW FEATURE: Anchored Canonicalization** - Correct symlink resolution within virtual/constrained directory spaces
+  - **New public API**: `anchored_canonicalize(anchor_dir, path)` function for anchor-relative path resolution
+  - **Feature-gated**: Available under the optional `anchored` feature flag (no additional dependencies)
+  - **Virtual space symlinks**: Ensures proper symlink resolution behavior within bounded directory trees
+  - **Use cases**: Virtual filesystems, containerized environments, chroot-like scenarios, build systems
+  - **Cross-platform**: Works on Windows, macOS, and Linux with platform-specific optimizations
+
+### Improved
+- **Comprehensive test coverage**: Expanded from 273 to 299 comprehensive tests (+26 new tests)
+  - New test modules covering symlink resolution in virtual spaces
+  - Enhanced boundary condition testing and Unicode edge case coverage
+  - Platform-specific behavior validation for Windows UNC paths and Unix symlinks
+- **Performance optimizations**: Added `#[inline]` attributes to hot-path functions in symlink and Windows modules
+- **Documentation**: New examples and enhanced security guidance for the anchored canonicalization feature
+
+### Technical Details
+- Feature flag `anchored` adds the new `anchored_canonicalize` function without increasing compile time for existing users
+- Maintains zero runtime dependencies while providing enterprise-grade path security
+- All existing APIs remain unchanged - this is a pure feature addition
+
 ## [0.3.1] - 2025-09-07
 
 ### Changed

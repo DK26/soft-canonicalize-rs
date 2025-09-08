@@ -68,12 +68,14 @@ pub(crate) fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<Pa
 
 /// Checks if a symlink is likely a system symlink that shouldn't consume depth budget
 #[cfg(target_os = "macos")]
+#[inline]
 fn is_likely_system_symlink(path: &Path) -> bool {
     let s = path.to_string_lossy();
     s.starts_with("/var") || s.starts_with("/tmp") || s.starts_with("/etc")
 }
 
 #[cfg(target_os = "linux")]
+#[inline]
 fn is_likely_system_symlink(path: &Path) -> bool {
     let s = path.to_string_lossy();
     s.starts_with("/lib")
@@ -83,6 +85,7 @@ fn is_likely_system_symlink(path: &Path) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[inline]
 fn is_likely_system_symlink(_path: &Path) -> bool {
     false
 }

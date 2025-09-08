@@ -10,7 +10,8 @@ fn get_python_baseline() -> Result<f64, Box<dyn std::error::Error>> {
     println!("📊 Running Python baseline measurement...");
 
     // Try different Python commands
-    let python_commands = ["python", "python3", "py"];
+    // Prefer newest Python first (Linux often exposes latest as python3.13)
+    let python_commands = ["python3.13", "python", "python3", "py"];
     let script_path = "python_fair_comparison.py";
     let working_dir = "benches/python";
 

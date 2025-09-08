@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::error_with_path;
 
+#[inline]
 pub(crate) fn is_incomplete_unc(p: &Path) -> bool {
     // Detect \\server or \\server\\ (no share). Exclude verbatim and device namespaces.
     let raw = p.as_os_str().to_string_lossy();
@@ -187,6 +188,7 @@ pub(crate) fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[inline]
 pub(crate) fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
     use std::path::{Component, Prefix};
 
@@ -222,6 +224,7 @@ pub(crate) fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
     }
 }
 
+#[inline]
 pub(crate) fn has_windows_short_component(p: &Path) -> bool {
     use std::path::Component;
     for comp in p.components() {
@@ -246,6 +249,7 @@ pub(crate) fn has_windows_short_component(p: &Path) -> bool {
     false
 }
 
+#[inline]
 fn is_likely_8_3_short_name_wide(name: &std::ffi::OsStr) -> bool {
     use std::os::windows::ffi::OsStrExt;
     // Stream over UTF-16 code units without heap allocation using a small state machine.

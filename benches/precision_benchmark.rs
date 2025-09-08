@@ -8,7 +8,8 @@ use tempfile::TempDir;
 
 /// Run the Python baseline benchmark and extract the performance number
 fn get_python_baseline() -> Result<f64, Box<dyn std::error::Error>> {
-    let python_commands = ["python", "python3", "py"];
+    // Prefer newest Python first
+    let python_commands = ["python3.13", "python", "python3", "py"];
 
     for python_cmd in &python_commands {
         let output = Command::new(python_cmd)

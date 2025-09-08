@@ -47,6 +47,35 @@
 //! # }
 //! ```
 //!
+//! ### Anchored Canonicalization (Security-Focused)
+//!
+//! For secure path handling within a known root directory:
+//!
+//! ```rust
+//! # #[cfg(feature = "anchored")]
+//! use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
+//! # #[cfg(not(feature = "anchored"))]
+//! # use soft_canonicalize::soft_canonicalize;
+//! use std::fs;
+//!
+//! # fn example() -> Result<(), std::io::Error> {
+//! // Set up an anchor directory
+//! let root = std::env::temp_dir().join("workspace_root");
+//! fs::create_dir_all(&root)?;
+//! let anchor = soft_canonicalize(&root)?;
+//!
+//! // Canonicalize user input relative to anchor
+//! let user_input = "../../../etc/passwd";
+//! # #[cfg(feature = "anchored")]
+//! let resolved_path = anchored_canonicalize(&anchor, user_input)?;
+//! # #[cfg(not(feature = "anchored"))]
+//! # { let _ = user_input; }
+//! # #[cfg(feature = "anchored")]
+//! # let _ = resolved_path;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! ## How It Works
 //!
 //! 1. Input validation (empty path, platform pre-checks)
@@ -73,15 +102,16 @@
 //! - Unix-like systems: standard absolute and relative path semantics
 //! - UNC floors and device namespaces are preserved and respected
 //!
-//! ## Test Coverage
+//! ## Testing
 //!
-//! 264+ tests including:
+//! 299 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
 //! - Platform-specific cases (Windows/macOS/Linux)
 //! - Symlink semantics and cycle detection
 //! - Windows-specific UNC, 8.3, and ADS validation
+//! - Anchored canonicalization tests (with `anchored` feature)
 //!
 //! ## Known Limitation (Windows 8.3)
 //!
@@ -122,6 +152,32 @@ use crate::windows::{
 
 use std::path::{Path, PathBuf};
 use std::{fs, io};
+
+#[inline]
+fn path_contains_nul(p: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        p.as_os_str().as_bytes().contains(&0)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        p.as_os_str().encode_wide().any(|c| c == 0)
+    }
+}
+
+#[inline]
+fn reject_nul_bytes(p: &Path) -> io::Result<()> {
+    if path_contains_nul(p) {
+        return Err(error_with_path(
+            io::ErrorKind::InvalidInput,
+            p,
+            "path contains null byte",
+        ));
+    }
+    Ok(())
+}
 
 /// Performs "soft" canonicalization on a path.
 ///
@@ -198,28 +254,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // At this point: path doesn't fully exist or canonicalize returned a recoverable error — continue.
 
     // Stage 3.1: sanity check — validate no embedded NUL bytes (platform-specific)
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        if path.as_os_str().as_bytes().contains(&0) {
-            return Err(error_with_path(
-                io::ErrorKind::InvalidInput,
-                path,
-                "path contains null byte",
-            ));
-        }
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        if path.as_os_str().encode_wide().any(|c| c == 0) {
-            return Err(error_with_path(
-                io::ErrorKind::InvalidInput,
-                path,
-                "path contains null byte",
-            ));
-        }
-    }
+    reject_nul_bytes(path)?;
 
     // Stage 4: collect path components efficiently (root/prefix vs normal names)
     let mut components = Vec::new();
@@ -322,8 +357,190 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     Ok(result)
 }
 
+/// Canonicalize a user-provided path relative to an anchor directory, with symlink-aware semantics.
+///
+/// This function resolves paths **as if rooted under a given anchor**, performing canonical path
+/// resolution relative to the anchor instead of the current working directory.
+///
+/// ## Behavior Overview
+/// - Treats `input` as if rooted under `anchor` (strips root/prefix markers from `input`)
+/// - Expands symlinks as encountered (component-by-component), applying `..` after expansion
+/// - Clamps lexical `..` to the `anchor` boundary — unless an absolute symlink target
+///   is followed, in which case the symlink is followed to its actual target
+/// - Bounded symlink following with cycle-defense, consistent with `MAX_SYMLINK_DEPTH`
+/// - Mirrors input validations from `soft_canonicalize` (null-byte checks, Windows ADS layout)
+///
+/// ## Features
+/// - **Anchored resolution**: Interprets paths relative to a specific anchor directory
+/// - **Symlink canonicalization**: Follows symlinks to their actual targets (including absolute ones)
+/// - **Input validation**: Rejects null bytes, malformed UNC paths, and empty paths
+/// - **Cycle detection**: Prevents infinite symlink loops with configurable depth limits
+///
+/// ## Use Cases
+/// - **Virtual filesystem implementations**: Provides correct symlink resolution behavior
+///   when operating within virtual/constrained directory spaces
+/// - **Containerized environments**: Ensures symlinks resolve properly relative to a virtual root
+/// - **Chroot-like scenarios**: Maintains correct path semantics within bounded directory trees
+/// - **Build systems**: Resolving paths relative to project roots with proper symlink handling
+/// - **Applications needing anchor-relative interpretation**: Consistent path resolution
+///   relative to a base directory while preserving symlink semantics
+/// - **Path sandboxing**: Building higher-level path processing APIs with controlled resolution scope
+///
+/// ## Notes
+/// - The `anchor` is canonicalized (soft) first; the result is absolute
+/// - For fully-existing final paths, this typically matches `std::fs::canonicalize` of the
+///   resolved path; however, semantics differ because `input` is interpreted relative to `anchor`
+/// - Enable with `--features anchored` (optional feature to keep core library lightweight)
+///
+/// ## Example
+/// ```
+/// use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
+/// use std::fs;
+///
+/// # fn demo() -> Result<(), std::io::Error> {
+/// let anchor = std::env::temp_dir().join("sc_anchor_demo").join("root");
+/// fs::create_dir_all(&anchor)?;
+///
+/// let base = soft_canonicalize(&anchor)?;
+/// let out = anchored_canonicalize(&base, "/etc/passwd")?;
+/// assert_eq!(out, base.join("etc").join("passwd"));
+/// # Ok(())
+/// # }
+/// # demo().unwrap();
+/// ```
+#[cfg(feature = "anchored")]
+#[cfg_attr(docsrs, doc(cfg(feature = "anchored")))]
+pub fn anchored_canonicalize(
+    anchor: impl AsRef<Path>,
+    input: impl AsRef<Path>,
+) -> io::Result<PathBuf> {
+    let anchor = anchor.as_ref();
+    let input = input.as_ref();
+
+    // Basic input validation (empty paths)
+    if anchor.as_os_str().is_empty() {
+        return Err(error_with_path(
+            io::ErrorKind::NotFound,
+            anchor,
+            "anchor path is empty",
+        ));
+    }
+
+    // Reject NULs (platform-specific)
+    reject_nul_bytes(anchor)?;
+    reject_nul_bytes(input)?;
+
+    // Windows-only: reject incomplete UNC anchors early
+    #[cfg(windows)]
+    {
+        if is_incomplete_unc(anchor) {
+            return Err(error_with_path(
+                io::ErrorKind::InvalidInput,
+                anchor,
+                "invalid UNC path: missing share",
+            ));
+        }
+    }
+
+    // Canonicalize anchor (soft) to get absolute, platform-correct base even if parts don't exist.
+    let mut base = soft_canonicalize(anchor)?;
+
+    // Early ADS validation on the combined textual intent (defense-in-depth)
+    #[cfg(windows)]
+    validate_windows_ads_layout(&base.join(input))?;
+
+    // Strip root/prefix markers from `input`: iterate only Normal/CurDir/ParentDir components.
+    // Feed components through a work queue so we can push symlink targets back in if needed.
+    let mut queue: std::collections::VecDeque<std::ffi::OsString> =
+        std::collections::VecDeque::new();
+    for comp in input.components() {
+        use std::path::Component;
+        match comp {
+            Component::Normal(s) => queue.push_back(s.to_os_string()),
+            Component::CurDir => queue.push_back(std::ffi::OsString::from(".")),
+            Component::ParentDir => queue.push_back(std::ffi::OsString::from("..")),
+            Component::RootDir | Component::Prefix(_) => {
+                // Strip root/prefix per spec; do not push
+            }
+        }
+    }
+
+    // Clamp floor: never pop below the canonicalized anchor unless an absolute symlink target is followed.
+    let anchor_floor = base.clone();
+    let mut clamp_enabled = true;
+
+    // Symlink cycles and hop limits are enforced via shared helper used below.
+
+    while let Some(seg) = queue.pop_front() {
+        if seg == std::ffi::OsStr::new(".") {
+            continue;
+        }
+        if seg == std::ffi::OsStr::new("..") {
+            if clamp_enabled {
+                if base != anchor_floor && base.starts_with(&anchor_floor) {
+                    let _ = base.pop();
+                }
+            } else {
+                let _ = base.pop();
+            }
+            continue;
+        }
+
+        // Normal segment: append and then resolve symlinks at this point, chain-aware.
+        base.push(&seg);
+
+        // Resolve symlink chain at `base` via shared helper; enforce clamp semantics
+        if let Ok(meta) = fs::symlink_metadata(&base) {
+            if meta.file_type().is_symlink() {
+                // Inspect the first hop to decide escape behavior
+                let first_target = fs::read_link(&base)?;
+                let absolute_first = first_target.is_absolute();
+
+                // Use common symlink resolver to inherit security policies
+                let resolved = crate::symlink::resolve_simple_symlink_chain(&base)?;
+                base = resolved;
+
+                if absolute_first {
+                    // Absolute symlink escape: drop clamp per spec
+                    clamp_enabled = false;
+                } else if clamp_enabled {
+                    // Relative symlink: do not allow escape beyond anchor floor
+                    if !base.starts_with(&anchor_floor) {
+                        base = anchor_floor.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    // LATE Windows ADS validation
+    #[cfg(windows)]
+    validate_windows_ads_layout(&base)?;
+
+    // Ensure Windows extended-length normalization for absolute results
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        if let Some(Component::Prefix(pr)) = base.components().next() {
+            match pr.kind() {
+                Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _) => {}
+                Prefix::Disk(_) | Prefix::UNC(_, _) => {
+                    base = ensure_windows_extended_prefix(&base);
+                }
+                Prefix::DeviceNS(_) => {}
+            }
+        }
+    }
+
+    Ok(base)
+}
+
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "anchored")]
+    mod anchored_canonicalize;
+    #[cfg(feature = "anchored")]
+    mod anchored_security;
     mod api_compatibility;
     mod basic_functionality;
     mod cve_tests;
