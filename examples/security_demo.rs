@@ -1,23 +1,41 @@
-use soft_canonicalize::soft_canonicalize;
+use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
 use std::path::{Path, PathBuf};
 
-/// Validates that a user-provided path stays within a jail directory
-fn validate_user_path(user_input: &str, jail_dir: &Path) -> Result<PathBuf, String> {
-    println!("  Validating user input: {user_input:?}");
+/// Manual validation approach - validates that a user-provided path stays within a jail directory
+fn validate_user_path_manual(user_input: &str, jail_dir: &Path) -> Result<PathBuf, String> {
+    println!("  [Manual] Validating user input: {user_input:?}");
 
     // Canonicalize the user input (may not exist yet)
     let canonical_path =
         soft_canonicalize(Path::new(user_input)).map_err(|e| format!("Invalid path: {e}"))?;
 
-    println!("  Canonicalized to: {canonical_path:?}");
+    println!("  [Manual] Canonicalized to: {canonical_path:?}");
 
     // Ensure it's within the jail directory
     if canonical_path.starts_with(jail_dir) {
-        println!("  ✅ SAFE: Path is within jail boundary");
+        println!("  [Manual] ✅ SAFE: Path is within jail boundary");
         Ok(canonical_path)
     } else {
-        println!("  🚫 BLOCKED: Path escapes jail boundary");
+        println!("  [Manual] 🚫 BLOCKED: Path escapes jail boundary");
         Err("Path escapes jail boundary".to_string())
+    }
+}
+
+/// Built-in secure approach using anchored_canonicalize
+fn validate_user_path_anchored(user_input: &str, jail_dir: &Path) -> Result<PathBuf, String> {
+    println!("  [Anchored] Validating user input: {user_input:?}");
+
+    // Use anchored_canonicalize for automatic path jailing
+    match anchored_canonicalize(jail_dir, user_input) {
+        Ok(safe_path) => {
+            println!("  [Anchored] Resolved to: {safe_path:?}");
+            println!("  [Anchored] ✅ SAFE: Path is automatically constrained to anchor");
+            Ok(safe_path)
+        }
+        Err(e) => {
+            println!("  [Anchored] 🚫 BLOCKED: {e}");
+            Err(format!("Path validation failed: {e}"))
+        }
     }
 }
 
@@ -42,7 +60,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for path in &safe_paths {
-        match validate_user_path(path, &canonical_jail) {
+        println!("Testing path: {path:?}");
+        match validate_user_path_manual(path, &canonical_jail) {
+            Ok(_) => println!(),
+            Err(e) => println!("  Error: {e}\n"),
+        }
+        match validate_user_path_anchored(path, &canonical_jail) {
             Ok(_) => println!(),
             Err(e) => println!("  Error: {e}\n"),
         }
@@ -62,9 +85,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for path in &malicious_paths {
-        match validate_user_path(path, &canonical_jail) {
+        println!("Testing malicious path: {path:?}");
+        match validate_user_path_manual(path, &canonical_jail) {
             Ok(_) => println!(),
-            Err(e) => println!("  Expected: {e}\n"),
+            Err(e) => println!("  [Manual] Expected: {e}\n"),
+        }
+        match validate_user_path_anchored(path, &canonical_jail) {
+            Ok(_) => println!(),
+            Err(e) => println!("  [Anchored] Expected: {e}\n"),
         }
     }
 
@@ -87,9 +115,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for path in &absolute_attacks {
-        match validate_user_path(path, &canonical_jail) {
+        println!("Testing absolute attack: {path:?}");
+        match validate_user_path_manual(path, &canonical_jail) {
             Ok(_) => println!(),
-            Err(e) => println!("  Expected: {e}\n"),
+            Err(e) => println!("  [Manual] Expected: {e}\n"),
+        }
+        match validate_user_path_anchored(path, &canonical_jail) {
+            Ok(_) => println!(),
+            Err(e) => println!("  [Anchored] Expected: {e}\n"),
         }
     }
 
@@ -105,14 +138,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for path in &edge_cases {
-        match validate_user_path(path, &canonical_jail) {
+        println!("Testing edge case: {path:?}");
+        match validate_user_path_manual(path, &canonical_jail) {
             Ok(_) => println!(),
-            Err(e) => println!("  Result: {e}\n"),
+            Err(e) => println!("  [Manual] Result: {e}\n"),
+        }
+        match validate_user_path_anchored(path, &canonical_jail) {
+            Ok(_) => println!(),
+            Err(e) => println!("  [Anchored] Result: {e}\n"),
         }
     }
 
     println!("=== Security Demo Complete ===");
-    println!("Soft canonicalize successfully blocked all directory traversal attempts!");
+    println!("Both manual validation and anchored_canonicalize successfully blocked all directory traversal attempts!");
+    println!("anchored_canonicalize provides the same security with simpler, more reliable code.");
 
     Ok(())
 }

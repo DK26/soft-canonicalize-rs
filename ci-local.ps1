@@ -191,6 +191,7 @@ Run-Check "Format Check" "cargo fmt --all -- --check"
 Run-Check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
 Run-Check "Tests (includes compilation)" "cargo test --verbose"
+Run-Check "Tests (all features)" "cargo test --all-features --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 $env:RUSTDOCFLAGS = "-D warnings"
 Run-Check "Documentation" "cargo doc --no-deps --document-private-items --all-features"

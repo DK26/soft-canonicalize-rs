@@ -13,9 +13,9 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance observed in recent runs: Windows ~1.7x, Linux ~1.9x faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.8x (10,217 paths/s), Linux ~3.8x (352,751 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 264 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 299 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -53,9 +53,39 @@ assert_eq!(
 );
 ```
 
+### Anchored Canonicalization
+
+For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function ensures symlinks resolve properly relative to an anchor directory, making it ideal for virtual filesystems, containerized environments, and chroot-like scenarios:
+
+```rust
+use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
+use std::fs;
+
+// Set up an anchor/root directory
+let root = std::env::temp_dir().join("workspace_root");
+fs::create_dir_all(&root)?;
+let anchor = soft_canonicalize(&root)?;
+
+// Canonicalize paths relative to the anchor
+let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
+// Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
+
+// Handles symlinks with proper canonicalization within virtual space
+let user_input = "uploads/../../sensitive/file.txt";
+let resolved = anchored_canonicalize(&anchor, user_input)?;
+// Canonicalizes paths relative to anchor - symlinks are followed to their targets
+```
+
+Key features of `anchored_canonicalize`:
+- **Virtual space symlink resolution**: Ensures correct symlink behavior within bounded directory trees
+- **Anchor-relative canonicalization**: Resolves paths relative to a specific anchor directory  
+- **Symlink resolution**: Follows symlinks to their actual targets with proper virtual space semantics
+- **Component-by-component**: Processes path components in proper order
+- **Absolute results**: Always returns absolute canonical paths
+
 ### Test Coverage
 
-**264 comprehensive tests** including:
+**299 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -63,6 +93,7 @@ assert_eq!(
 - **45+ Windows UNC path tests** including unicode preservation, long paths, and mixed separators
 - **50+ platform-specific tests** for Windows, macOS, and Linux edge cases
 - **22+ performance and stress tests** validating behavior under various conditions
+- **5 documentation tests** demonstrating API usage
 
 ### 🔍 Tested Against Path Handling Edge Cases
 
@@ -116,7 +147,7 @@ Each crate serves different use cases. Choose based on your primary need:
 | Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
 | Windows UNC path support      | ✅                   | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
 | Zero dependencies             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Built-in path jailing         | ❌                   | ❌                       | ❌                     | ❌                     | ❌                 | ✅                   |
+| Anchored canonicalization     | ✅ (`anchored_canonicalize`) | ❌ | ❌                     | ❌                     | ❌                 | ❌                   |
 
 ## Known Limitations
 

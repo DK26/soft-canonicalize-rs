@@ -1,6 +1,13 @@
 # AGENTS: AI Contributor Guide
 
-This repo contains a zero-dependency Rust crate that canonicalizes paths even when suffixes don’t exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux.
+This repo contains a zero-dependency Rust crate that canonicalizes paths when suffixes don't exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux. AI Contributor Guide
+
+This repo contains a zero-dependency Rust crate that canonicalizes pathsLinux/WSL (Bash):
+- If running from Windows, prefer WSL for Linux benches. From the repo root on the Linux side, run:
+  - for i in {1..5}; do cargo bench | tee "target/bench-linux-$i.txt"; done
+- If running from Windows PowerShell and cargo is not in PATH for bash, adjust the path to your cargo installation
+- Extract the same "Rust soft_canonicalize   : <N> paths/s" line from each run, sort the five numbers, and take the median. Report as "Linux median (paths/s)".
+ - For latest Python comparison, ensure `python3.13` is installed/available. The harness auto-tries `python3.13` first on Linux. when suffixes don’t exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux.
 
 Use this guide when proposing changes, refactors, tests, or docs with an automated agent.
 
@@ -82,8 +89,37 @@ These scripts:
 
 - Run subset benches locally via `cargo bench`.
 - Python baseline lives in `benches/python/python_fair_comparison.py`; requires a system Python (`python|python3|py`).
+ - Python baseline lives in `benches/python/python_fair_comparison.py`; the harness prefers `python3.13` when available to match latest Python on Linux/WSL, then falls back to `python`, `python3`, or `py`.
 - Bench numbers are environment-dependent; only use them as trend indicators.
 - Do not regress performance by adding extra syscalls or full-path canonicalizations—justify any changes with comments and tests.
+
+### How to run benches (5-run median)
+
+When asked to “run benches,” use this exact 5-run protocol and report medians from the mixed-workload benchmark (`benches/performance_comparison.rs`). The benchmark itself invokes the Python baseline automatically when Python is available.
+
+Requirements:
+- Windows: PowerShell, Rust toolchain installed and on PATH.
+- Linux/WSL/macOS: Bash with Rust toolchain installed.
+- Python available as `python`, `python3`, or `py` for the baseline (optional but recommended).
+
+Windows (PowerShell):
+- From repo root, run this 5-run loop and capture logs:
+  - for ($i=1; $i -le 5; $i++) { cargo bench | Tee-Object -FilePath "target\bench-windows-$i.txt" }
+- From each run, extract the value printed by performance_comparison as:
+  - "Rust soft_canonicalize   : <N> paths/s"
+- Sort the five numbers and take the middle one (median). Report that as “Windows median (paths/s)”.
+
+Linux/WSL (Bash):
+- If running from Windows, prefer WSL for Linux benches. From the repo root on the Linux side, run:
+  - for i in {1..5}; do cargo bench | tee "target/bench-linux-$i.txt"; done
+- Extract the same "Rust soft_canonicalize   : <N> paths/s" line from each run, sort the five numbers, and take the median. Report as “Linux median (paths/s)”.
+ - For latest Python comparison, ensure `python3.13` is installed/available. The harness auto-tries `python3.13` first on Linux.
+
+Notes and tips:
+- Ignore Criterion output/tests lines; only the performance_comparison summary line matters for the primary mixed-workload figure.
+- Ensure minimal background load; close heavy apps to reduce variance.
+- If Python isn’t found on Linux, the runs still complete; only the baseline ratio will be skipped or use an alternate Python.
+- The phrase “bash cargo brench” seen in some notes is a typo; use `cargo bench` under Bash/WSL as shown above.
 
 ## Platform Notes (Windows)
 
@@ -116,6 +152,37 @@ These scripts:
 - Lints: `cargo clippy --all-targets --all-features -- -D warnings`
 - Docs (warnings as errors): `RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --document-private-items --all-features`
 - Benches: `cargo bench`
+
+## Test Counting
+
+We track test count as the sum of: 
+- Number of `#[test]` items found under `src/` and `tests/` folders
+- Plus the number of Rust doc tests
+
+**Important**: Doc tests must be runnable. Do not use `no_run`, `ignore`, `should_panic`, or other attributes that prevent execution. All doc tests must compile and run successfully as part of `cargo test`.
+
+Commands to count tests:
+
+**PowerShell (Windows):**
+```powershell
+# Count #[test] in src/ and tests/
+$unit = (Get-ChildItem -Recurse -Path src, tests -Include *.rs | Select-String -Pattern '#\s*\[\s*test\s*\]')
+$unit.Count
+
+# Count doc tests
+(cargo test --doc -- --list | Select-String -Pattern '^test ').Count
+```
+
+**Bash (Linux/macOS/WSL):**
+```bash
+# Count #[test] in src/ and tests/
+grep -REo '#[[:space:]]*\[[[:space:]]*test[[:space:]]*\]' src tests | wc -l
+
+# Count doc tests
+cargo test --doc -- --list | grep '^test ' | wc -l
+```
+
+When documenting test count, use the sum of both numbers. Update README.md and other docs with dynamic counts rather than hardcoded numbers.
 
 ## One‑Shot Prompt for Agents
 

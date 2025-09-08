@@ -1,6 +1,6 @@
 [package]
 name = "soft-canonicalize"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Path canonicalization that works with non-existing paths."
@@ -19,13 +19,22 @@ rust-version = "1.70.0"
 [dev-dependencies]
 tempfile = "3.8"
 
+[features]
+default = []
+# Opt-in API for anchored canonicalization semantics. No extra deps.
+anchored = []
+
 [[example]]
 name = "basic_usage"
 required-features = []
 
 [[example]]
+name = "anchored_canonicalize"
+required-features = ["anchored"]
+
+[[example]]
 name = "security_demo"
-required-features = []
+required-features = ["anchored"]
 
 [[bench]]
 name = "performance_comparison"
