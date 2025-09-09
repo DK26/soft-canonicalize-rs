@@ -58,15 +58,14 @@ assert_eq!(
 For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function ensures symlinks resolve properly relative to an anchor directory, making it ideal for virtual filesystems, containerized environments, and chroot-like scenarios:
 
 ```rust
-use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
+use soft_canonicalize::anchored_canonicalize;
 use std::fs;
 
-// Set up an anchor/root directory
-let root = std::env::temp_dir().join("workspace_root");
-fs::create_dir_all(&root)?;
-let anchor = soft_canonicalize(&root)?;
+// Set up an anchor/root directory (no need to pre-canonicalize)
+let anchor = std::env::temp_dir().join("workspace_root");
+fs::create_dir_all(&anchor)?;
 
-// Canonicalize paths relative to the anchor
+// Canonicalize paths relative to the anchor (anchor is soft-canonicalized internally)
 let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
 // Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
 
