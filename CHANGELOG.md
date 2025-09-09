@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2025-09-09
+
+### Changed
+- Documentation and examples now pass raw anchors to `anchored_canonicalize`; clarified that the API soft-canonicalizes the anchor internally. No API changes.
+
+### Added
+- New Windows tests asserting exact, literal extended-length paths (e.g., `\\?\C:\Users\…`) for non-existing anchors and inputs.
+- Test covering anchors that include `..` segments, confirming internal soft-canonicalization normalizes the base and yields equal results for equivalent inputs.
+
+### Improved
+- Test style hardened across the suite:
+  - Prefer full `assert_eq!` comparisons over `starts_with`/`ends_with` hints.
+  - Use raw strings for Windows inputs and readable, single-join or full-literal expected paths.
+- Added “Testing Rules for Agents (must follow)” to `AGENTS.md` to codify exact-equality expectations, Windows raw-string usage, anchored semantics, symlink policy, and environment assumptions.
+- Clarified ADS/CVE coverage in security tests; no behavior changes.
+
+### Notes
+- Behavior is unchanged; this release focuses on clearer docs/examples and stricter, more readable tests.
+
 ## [0.3.2] - 2025-01-27
 
 ### Added

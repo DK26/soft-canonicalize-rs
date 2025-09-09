@@ -85,6 +85,50 @@ These scripts:
   - Example-based docs (doctests) when clarifying public behavior
 - Keep tests deterministic and filesystem-safe; avoid relying on external shares or network state.
 
+### Testing Rules for Agents (must follow)
+
+- Prefer exact equality over hints:
+  - Do not use `starts_with`/`ends_with` to “approximate” expected paths. Compute or state the full expected path and `assert_eq!`.
+  - Windows: when asserting final absolute results, use extended-length expectations (e.g., `\\?\C:\\...`) if applicable.
+
+- Build expected paths simply and readably:
+  - For inputs (what a user would type), use raw strings (e.g., `r"hello\dir\..\world"`).
+  - For expected results, either:
+    - Use a single raw-string tail with one `join` (e.g., `base.join(r"etc\passwd")`), or
+    - Compare against a full literal built via `format!` and `PathBuf::from` when you want to assert the entire string.
+  - Avoid long chains of `join("segment")` unless necessary; keep tests human-readable.
+
+- Anchored semantics:
+  - `anchored_canonicalize` soft-canonicalizes the anchor internally. Do not pre-canonicalize anchors in examples unless demonstrating manual behavior.
+  - Clamp behavior: lexical `..` clamps to the anchor. Following an absolute symlink disables clamp (escape is allowed by design). Relative symlinks keep clamp. Write tests that affirm these rules explicitly.
+
+- Symlinks in tests:
+  - Unix: symlink creation is reliable; create real symlinks and assert exact resolved results.
+  - Windows: symlink creation may require privileges; tests that depend on symlinks should skip gracefully on `PermissionDenied` (or raw OS 1314). We already have such patterns in `src/tests/anchored_security/windows_symlink.rs`.
+
+- Environment assumptions:
+  - Do not depend on global machine directories (e.g., `C:\\Users`) unless you defend with a skip or your assertion is valid for non-existing paths as well.
+  - Prefer `TempDir`-based fixtures; avoid network paths and external shares.
+
+- Examples of good assertions:
+  - Full equality under an anchored base:
+    ```rust
+    let base = soft_canonicalize(&anchor)?;
+    let out = anchored_canonicalize(&base, r"c\d\e.txt")?;
+    assert_eq!(out, base.join(r"c\d\e.txt"));
+    ```
+  - Literal Windows expectation (non-existing is OK):
+    ```rust
+    let anchor = r"C:\\Users\\non-existing\\dir1\\dir2\\..\\..\\folder";
+    let out = anchored_canonicalize(anchor, r"hello\\world")?;
+    assert_eq!(out, std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world"));
+    ```
+  - Relative symlink keeps clamp (Windows example uses skip-on-1314 pattern; see existing tests): ensure equality with exact expected path, not hints.
+
+- Virtual vs system paths (for downstream crates):
+  - If a downstream crate exposes a “virtual” display that’s lexical, assert lexical results there.
+  - For symlink-resolved system paths, use our `anchored_canonicalize` with a canonicalized anchor and assert the fully-resolved `PathBuf`.
+
 ## Performance & Benchmarks
 
 - Run subset benches locally via `cargo bench`.

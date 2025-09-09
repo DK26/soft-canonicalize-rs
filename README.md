@@ -15,7 +15,7 @@
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
 **⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.8x (10,217 paths/s), Linux ~3.8x (352,751 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 299 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 301 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -85,7 +85,7 @@ Key features of `anchored_canonicalize`:
 
 ### Test Coverage
 
-**299 comprehensive tests** including:
+**301 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -141,13 +141,13 @@ Each crate serves different use cases. Choose based on your primary need:
 
 ### Feature Comparison
 
-| Feature                       | `soft_canonicalize` | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `jailed-path`       |
-| ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
-| Works with non-existing paths | ✅                   | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
-| Resolves symlinks             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
-| Windows UNC path support      | ✅                   | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
-| Zero dependencies             | ✅                   | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Anchored canonicalization     | ✅ (`anchored_canonicalize`) | ❌ | ❌                     | ❌                     | ❌                 | ❌                   |
+| Feature                       | `soft_canonicalize`         | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `jailed-path`       |
+| ----------------------------- | --------------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
+| Works with non-existing paths | ✅                           | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
+| Resolves symlinks             | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
+| Windows UNC path support      | ✅                           | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
+| Zero dependencies             | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
+| Anchored canonicalization     | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ❌                   |
 
 ## Known Limitations
 

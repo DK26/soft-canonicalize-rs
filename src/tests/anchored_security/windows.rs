@@ -25,9 +25,10 @@ fn extended_length_prefix_on_absolute_results() -> std::io::Result<()> {
     let anchor = td.path().join("a").join("b");
     fs::create_dir_all(&anchor)?;
     let base = soft_canonicalize(&anchor)?;
-    let out = anchored_canonicalize(base, r"c\d\e.txt")?;
-    let s = out.to_string_lossy();
-    assert!(s.starts_with(r"\\?\") || s.starts_with(r"\\?\UNC\"));
+    let out = anchored_canonicalize(&base, r"c\d\e.txt")?;
+    let base_str = base.to_string_lossy();
+    let expected = std::path::PathBuf::from(format!(r"{}\c\d\e.txt", base_str));
+    assert_eq!(out, expected);
     Ok(())
 }
 
@@ -37,9 +38,53 @@ fn non_existing_anchor_supported_windows() -> std::io::Result<()> {
     let td = TempDir::new()?;
     let anchor = td.path().join("does_not_exist").join("still_missing");
 
-    let out = anchored_canonicalize(anchor, r"subdir\file.txt")?;
-    let s = out.to_string_lossy();
-    assert!(s.starts_with(r"\\?\"));
-    assert!(out.ends_with("subdir\\file.txt"));
+    let out = anchored_canonicalize(&anchor, r"subdir\file.txt")?;
+    let base = soft_canonicalize(&anchor)?;
+    let expected = std::path::PathBuf::from(format!(r"{}\subdir\file.txt", base.to_string_lossy()));
+    assert_eq!(out, expected);
+    Ok(())
+}
+
+#[test]
+fn anchor_with_dotdot_normalization_windows() -> std::io::Result<()> {
+    // Verifies that an anchor containing `..` is soft-canonicalized internally
+    // and that both simple and nested input cases resolve identically under the normalized base.
+    // Scenario inspired by:
+    //   anchor: C:\Users\non-existing\dir1\dir2\..\..\folder
+    //   path1:  hello\world
+    //   path2:  hello\dir1\dir2\..\..\world
+    let td = TempDir::new()?;
+    let users = td.path().join("Users");
+    fs::create_dir_all(&users)?; // ensure a small existing prefix
+
+    // Use a single relative tail string with dot-dot segments for clarity
+    let anchor_raw = users.join(r"non-existing\dir1\dir2\..\..\folder");
+
+    // Expected normalized anchor base: Users/non-existing/folder (extended-length absolute)
+    let expected_base = soft_canonicalize(users.join(r"non-existing\folder"))?;
+
+    let out1 = anchored_canonicalize(&anchor_raw, r"hello\world")?;
+    let out2 = anchored_canonicalize(&anchor_raw, r"hello\dir1\dir2\..\..\world")?;
+
+    // Both should resolve to the same final path under the normalized base
+    let expected =
+        std::path::PathBuf::from(format!(r"{}\hello\world", expected_base.to_string_lossy()));
+    assert_eq!(out1, expected);
+    assert_eq!(out2, expected);
+
+    // Full equality already implies correct prefix formatting via soft_canonicalize
+    Ok(())
+}
+
+#[test]
+fn anchor_users_literal_nonexisting_windows() -> std::io::Result<()> {
+    // Uses a literal Users-based anchor and compares against a full literal expected value.
+    let anchor = std::path::Path::new(r"C:\\Users\\non-existing\\dir1\\dir2\\..\\..\\folder");
+    let out1 = anchored_canonicalize(anchor, r"hello\\world")?;
+    let out2 = anchored_canonicalize(anchor, r"hello\\dir1\\dir2\\..\\..\\world")?;
+
+    let expected = std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world");
+    assert_eq!(out1, expected);
+    assert_eq!(out2, expected);
     Ok(())
 }
