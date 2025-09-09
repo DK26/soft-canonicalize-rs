@@ -4,9 +4,9 @@ use soft_canonicalize::anchored_canonicalize;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Anchored Canonicalization Demo ===\n");
 
-    // Set up an anchor directory
+    // Set up an anchor directory (no need to pre-canonicalize; the API handles it)
     let anchor = std::env::temp_dir().join("workspace_root");
-    println!("Anchor directory: {anchor:?}\n");
+    println!("Anchor directory (raw): {anchor:?} — will be soft-canonicalized internally\n");
 
     // Demo 1: Normal paths are resolved relative to the anchor
     println!("--- NORMAL PATHS ---");

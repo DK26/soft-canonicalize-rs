@@ -25,7 +25,7 @@ fn validate_user_path_manual(user_input: &str, jail_dir: &Path) -> Result<PathBu
 fn validate_user_path_anchored(user_input: &str, jail_dir: &Path) -> Result<PathBuf, String> {
     println!("  [Anchored] Validating user input: {user_input:?}");
 
-    // Use anchored_canonicalize for automatic path jailing
+    // Use anchored_canonicalize for automatic path jailing (no need to pre-canonicalize jail_dir)
     match anchored_canonicalize(jail_dir, user_input) {
         Ok(safe_path) => {
             println!("  [Anchored] Resolved to: {safe_path:?}");
@@ -44,9 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up a jail directory
     let jail = std::env::temp_dir().join("user_files");
+    // For manual validation we use a canonicalized jail; anchored variant can take raw path too
     let canonical_jail = soft_canonicalize(&jail)?;
 
-    println!("Jail directory: {canonical_jail:?}\n");
+    println!("Jail directory (canonical for manual demo): {canonical_jail:?}\n");
 
     // Test cases: safe paths
     println!("--- SAFE PATHS ---");
@@ -65,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => println!(),
             Err(e) => println!("  Error: {e}\n"),
         }
-        match validate_user_path_anchored(path, &canonical_jail) {
+        match validate_user_path_anchored(path, &jail) {
             Ok(_) => println!(),
             Err(e) => println!("  Error: {e}\n"),
         }
@@ -90,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => println!(),
             Err(e) => println!("  [Manual] Expected: {e}\n"),
         }
-        match validate_user_path_anchored(path, &canonical_jail) {
+        match validate_user_path_anchored(path, &jail) {
             Ok(_) => println!(),
             Err(e) => println!("  [Anchored] Expected: {e}\n"),
         }
@@ -120,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => println!(),
             Err(e) => println!("  [Manual] Expected: {e}\n"),
         }
-        match validate_user_path_anchored(path, &canonical_jail) {
+        match validate_user_path_anchored(path, &jail) {
             Ok(_) => println!(),
             Err(e) => println!("  [Anchored] Expected: {e}\n"),
         }
@@ -143,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(_) => println!(),
             Err(e) => println!("  [Manual] Result: {e}\n"),
         }
-        match validate_user_path_anchored(path, &canonical_jail) {
+        match validate_user_path_anchored(path, &jail) {
             Ok(_) => println!(),
             Err(e) => println!("  [Anchored] Result: {e}\n"),
         }

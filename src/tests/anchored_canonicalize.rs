@@ -141,10 +141,10 @@ fn anchored_basic_clamp_windows() -> std::io::Result<()> {
     let out1 = anchored_canonicalize(&abs_anchor, r"/etc/passwd")?;
     let out2 = anchored_canonicalize(&abs_anchor, r"..\\..\\..\\etc\\passwd")?;
 
-    assert!(out1.starts_with(&abs_anchor));
-    assert!(out2.starts_with(&abs_anchor));
-    assert!(out1.ends_with("etc\\passwd") || out1.ends_with("etc/passwd"));
-    assert!(out2.ends_with("etc\\passwd") || out2.ends_with("etc/passwd"));
+    let expected =
+        std::path::PathBuf::from(format!(r"{}\etc\passwd", abs_anchor.to_string_lossy()));
+    assert_eq!(out1, expected);
+    assert_eq!(out2, expected);
     Ok(())
 }
 

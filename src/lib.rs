@@ -62,12 +62,13 @@
 //! // Set up an anchor directory
 //! let root = std::env::temp_dir().join("workspace_root");
 //! fs::create_dir_all(&root)?;
-//! let anchor = soft_canonicalize(&root)?;
+//! // No need to pre-canonicalize: anchored_canonicalize soft-canonicalizes the anchor internally
+//! let anchor = &root;
 //!
 //! // Canonicalize user input relative to anchor
 //! let user_input = "../../../etc/passwd";
 //! # #[cfg(feature = "anchored")]
-//! let resolved_path = anchored_canonicalize(&anchor, user_input)?;
+//! let resolved_path = anchored_canonicalize(anchor, user_input)?;
 //! # #[cfg(not(feature = "anchored"))]
 //! # { let _ = user_input; }
 //! # #[cfg(feature = "anchored")]
@@ -104,7 +105,7 @@
 //!
 //! ## Testing
 //!
-//! 299 tests including:
+//! 301 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks

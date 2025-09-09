@@ -26,8 +26,7 @@ fn absolute_and_relative_inputs_under_anchor() -> std::io::Result<()> {
     for (inp, expected_suffix) in cases {
         let out = anchored_canonicalize(&base, inp)?;
         assert!(out.is_absolute());
-        assert!(out.starts_with(&base));
-        assert!(out.ends_with(expected_suffix));
+        assert_eq!(out, expected_suffix);
     }
     Ok(())
 }

@@ -51,10 +51,8 @@ fn non_existing_anchor_clamp_windows() -> std::io::Result<()> {
     let base = soft_canonicalize(anchor_missing)?;
 
     let out = anchored_canonicalize(&base, r"..\..\..\etc\passwd")?;
-    // Should be extended-length absolute and clamped to the non-existing anchor base
-    let s = out.to_string_lossy();
-    assert!(s.starts_with(r"\\?\"));
-    assert!(out.starts_with(&base));
-    assert!(out.ends_with("etc\\passwd") || out.ends_with("etc/passwd"));
+    // Should be equal to computed base + suffix (extended-length ensured by base)
+    let expected = std::path::PathBuf::from(format!(r"{}\etc\passwd", base.to_string_lossy()));
+    assert_eq!(out, expected);
     Ok(())
 }
