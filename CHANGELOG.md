@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2025-09-13
+
+### Changed
+- Updated feature comparison table in README.md to reflect the new `strict-path` crate, replacing the previous `jailed-path` reference
+- Clarified "Anchored canonicalization" feature description as "Virtual/bounded canonicalization" for better terminology alignment
+- Version bump to 0.3.5
+
+### Documentation
+- Enhanced crate comparison clarity by updating the feature comparison table with more accurate descriptions of virtual/bounded path canonicalization capabilities
+
 ## [0.3.3] - 2025-09-09
 
 ### Changed
