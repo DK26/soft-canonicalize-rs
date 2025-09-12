@@ -129,24 +129,24 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 Each crate serves different use cases. Choose based on your primary need:
 
-| Crate                   | **Primary Purpose**                             | **Use Cases**                                                                     |
-| ----------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `soft_canonicalize`     | **Path canonicalization + non-existing paths**  | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
-| `std::fs::canonicalize` | **Path canonicalization (existing paths only)** | Standard path canonicalization when all paths exist on filesystem                 |
-| `dunce::canonicalize`   | **Windows compatibility layer**                 | Fixing Windows UNC issues for legacy app compatibility                            |
-| `normpath::normalize`   | **Safe normalization alternative**              | Avoiding Windows UNC bugs while normalizing paths                                 |
-| `path_absolutize`       | **CWD-relative path resolution**                | Converting relative paths to absolute with performance optimization               |
-| `jailed-path`           | **Security-first path containment**             | Preventing directory traversal attacks in web servers/sandboxes                   |
+| Crate                   | **Primary Purpose**                               | **Use Cases**                                                                     |
+| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `soft_canonicalize`     | **Path canonicalization + non-existing paths**    | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
+| `std::fs::canonicalize` | **Path canonicalization (existing paths only)**   | Standard path canonicalization when all paths exist on filesystem                 |
+| `dunce::canonicalize`   | **Windows compatibility layer**                   | Fixing Windows UNC issues for legacy app compatibility                            |
+| `normpath::normalize`   | **Safe normalization alternative**                | Avoiding Windows UNC bugs while normalizing paths                                 |
+| `path_absolutize`       | **CWD-relative path resolution**                  | Converting relative paths to absolute with performance optimization               |
+| `strict-path`           | **Type-safe path restriction with safe symlinks** | Preventing directory traversal with type-safe path restriction and safe symlinks  |
 
 ### Feature Comparison
 
-| Feature                       | `soft_canonicalize`         | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `jailed-path`       |
-| ----------------------------- | --------------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
-| Works with non-existing paths | ✅                           | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
-| Resolves symlinks             | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
-| Windows UNC path support      | ✅                           | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
-| Zero dependencies             | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Anchored canonicalization     | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ❌                   |
+| Feature                          | `soft_canonicalize`         | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `strict-path`       |
+| -------------------------------- | --------------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
+| Works with non-existing paths    | ✅                           | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
+| Resolves symlinks                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
+| Windows UNC path support         | ✅                           | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
+| Zero dependencies                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
+| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (`PathBoundary`)  |
 
 ## Known Limitations
 
