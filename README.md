@@ -146,7 +146,7 @@ Each crate serves different use cases. Choose based on your primary need:
 | Resolves symlinks                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
 | Windows UNC path support         | ✅                           | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
 | Zero dependencies                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (`PathBoundary`)  |
+| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (`VirtualRoot`)   |
 
 ## Known Limitations
 

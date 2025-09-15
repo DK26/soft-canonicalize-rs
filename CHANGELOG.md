@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2025-09-15
+
+### Fixed
+- Corrected `strict-path` feature comparison: `VirtualRoot` (not `PathBoundary`) is the correct equivalent to our `anchored_canonicalize` functionality
+
 ## [0.3.5] - 2025-09-13
 
 ### Changed
