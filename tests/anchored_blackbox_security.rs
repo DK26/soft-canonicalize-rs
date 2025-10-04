@@ -102,7 +102,7 @@ fn windows_ads_percent_encoded_colon_is_not_decoded() -> std::io::Result<()> {
 
 #[cfg(unix)]
 #[test]
-fn blackbox_absolute_symlink_escape_allowed() -> std::io::Result<()> {
+fn blackbox_absolute_symlink_is_clamped() -> std::io::Result<()> {
     use std::os::unix::fs::symlink;
 
     let td = TempDir::new()?;
@@ -114,8 +114,20 @@ fn blackbox_absolute_symlink_escape_allowed() -> std::io::Result<()> {
     fs::create_dir_all(&outside)?;
     let abs_outside = fs::canonicalize(&outside)?;
 
+    // Create symlink pointing to absolute path outside anchor
     symlink(&abs_outside, base.join("escape"))?;
+
+    // With new clamping behavior, absolute symlinks are reinterpreted relative to anchor
     let out = anchored_canonicalize(&base, "escape")?;
-    assert_eq!(out, abs_outside);
+
+    // The symlink target /tmp/.tmpXXXX/outside/dir becomes anchor/tmp/.tmpXXXX/outside/dir
+    // (root prefix stripped, then joined to anchor)
+    assert!(
+        out.starts_with(&base),
+        "Result should be under anchor: {:?} should start with {:?}",
+        out,
+        base
+    );
+    assert_eq!(out, base.join(abs_outside.strip_prefix("/").unwrap()));
     Ok(())
 }

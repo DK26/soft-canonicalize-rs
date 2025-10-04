@@ -48,7 +48,7 @@ fn absolute_symlink_inside_anchor_keeps_within_anchor() -> std::io::Result<()> {
 
 #[cfg(unix)]
 #[test]
-fn absolute_symlink_allows_escape() -> std::io::Result<()> {
+fn absolute_symlink_is_clamped_to_anchor() -> std::io::Result<()> {
     let td = TempDir::new()?;
     let anchor = td.path().join("home").join("myuser");
     fs::create_dir_all(&anchor)?;
@@ -63,9 +63,21 @@ fn absolute_symlink_allows_escape() -> std::io::Result<()> {
     let link = abs_anchor.join("escape_anchor_dir");
     std::os::unix::fs::symlink(&abs_outside, link)?;
 
-    // Following the absolute symlink should escape the anchor (clamp removed)
+    // NEW BEHAVIOR: absolute symlink should be clamped to anchor (virtual filesystem semantics)
     let out = anchored_canonicalize(&abs_anchor, "escape_anchor_dir")?;
-    assert_eq!(out, abs_outside);
+
+    // Should be clamped within anchor
+    assert!(
+        out.starts_with(&abs_anchor),
+        "Absolute symlink should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        out,
+        abs_anchor
+    );
+
+    // The clamped path should be: anchor + abs_outside (stripped of root)
+    let outside_stripped = abs_outside.strip_prefix("/").unwrap();
+    let expected = abs_anchor.join(outside_stripped);
+    assert_eq!(out, expected);
     Ok(())
 }
 
@@ -168,26 +180,8 @@ fn ads_validation_applies() -> std::io::Result<()> {
 
 #[cfg(unix)]
 #[test]
-fn security_wrapper_rejects_symlink_escapes() -> std::io::Result<()> {
+fn anchored_canonicalize_enforces_virtual_boundary() -> std::io::Result<()> {
     use std::fs;
-
-    /// Security wrapper that rejects ALL anchor escapes, including via absolute symlinks
-    fn secure_anchored_canonicalize(
-        anchor: &std::path::Path,
-        input: &str,
-    ) -> std::io::Result<std::path::PathBuf> {
-        let result = anchored_canonicalize(anchor, input)?;
-
-        // Security check: ensure result is still within the anchor
-        if result.starts_with(anchor) {
-            Ok(result)
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "Path escapes virtual boundary via symlink",
-            ))
-        }
-    }
 
     let td = TempDir::new()?;
     let anchor = td.path().join("secure_root");
@@ -203,19 +197,26 @@ fn security_wrapper_rejects_symlink_escapes() -> std::io::Result<()> {
     let escape_link = abs_anchor.join("escape_link");
     std::os::unix::fs::symlink(&abs_outside, escape_link)?;
 
-    // anchored_canonicalize allows the escape (correct canonicalize behavior)
-    let escaped = anchored_canonicalize(&abs_anchor, "escape_link")?;
-    assert_eq!(escaped, abs_outside);
-    assert!(!escaped.starts_with(&abs_anchor)); // Confirms escape
+    // NEW BEHAVIOR: anchored_canonicalize clamps the symlink to anchor (virtual filesystem semantics)
+    let result = anchored_canonicalize(&abs_anchor, "escape_link")?;
 
-    // Security wrapper rejects the escape
-    let err = secure_anchored_canonicalize(&abs_anchor, "escape_link").unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
-    assert!(err.to_string().contains("escapes virtual boundary"));
+    // Should be clamped within anchor (no escape)
+    assert!(
+        result.starts_with(&abs_anchor),
+        "Result should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        result,
+        abs_anchor
+    );
 
-    // But normal paths within anchor still work
-    let safe = secure_anchored_canonicalize(&abs_anchor, "safe/path")?;
+    // The clamped path should be: anchor + abs_outside (stripped of root)
+    let outside_stripped = abs_outside.strip_prefix("/").unwrap();
+    let expected = abs_anchor.join(outside_stripped);
+    assert_eq!(result, expected);
+
+    // Normal paths within anchor also work
+    let safe = anchored_canonicalize(&abs_anchor, "safe/path")?;
     assert!(safe.starts_with(&abs_anchor));
+    assert_eq!(safe, abs_anchor.join("safe/path"));
 
     Ok(())
 }

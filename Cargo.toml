@@ -19,7 +19,7 @@ rust-version = "1.70.0"
 [dev-dependencies]
 # MSRV guard: tempfile >=3.22 pulls windows-sys 0.61+ requiring rustc >=1.71.
 # 3.21 is the last known version that builds cleanly on Rust 1.70.0.
-tempfile = "=3.21"
+tempfile = "3.23.0"
 
 [features]
 default = []

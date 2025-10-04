@@ -358,22 +358,46 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     Ok(result)
 }
 
-/// Canonicalize a user-provided path relative to an anchor directory, with symlink-aware semantics.
+/// Canonicalize a user-provided path relative to an anchor directory, with virtual filesystem semantics.
 ///
 /// This function resolves paths **as if rooted under a given anchor**, performing canonical path
-/// resolution relative to the anchor instead of the current working directory.
+/// resolution relative to the anchor instead of the current working directory. All paths, including
+/// absolute symlink targets, are clamped to the anchor, implementing true virtual filesystem behavior.
 ///
 /// ## Behavior Overview
 /// - Treats `input` as if rooted under `anchor` (strips root/prefix markers from `input`)
 /// - Expands symlinks as encountered (component-by-component), applying `..` after expansion
-/// - Clamps lexical `..` to the `anchor` boundary — unless an absolute symlink target
-///   is followed, in which case the symlink is followed to its actual target
+/// - **Clamps ALL paths to the `anchor` boundary**, including:
+///   - Lexical `..` traversal in user input
+///   - **All absolute symlink targets** (both within and outside anchor - see below)
+///   - Chained symlinks with mixed absolute and relative targets
 /// - Bounded symlink following with cycle-defense, consistent with `MAX_SYMLINK_DEPTH`
 /// - Mirrors input validations from `soft_canonicalize` (null-byte checks, Windows ADS layout)
 ///
+/// ## Absolute Symlink Clamping (Critical Behavior)
+///
+/// When a symlink points to an absolute path, it is **always clamped to the anchor**,
+/// implementing true virtual filesystem semantics. This happens in two cases:
+///
+/// **Case 1: Symlink within anchor** (host-style path)
+/// - Example: Symlink `/tmp/anchor/link` → `/tmp/anchor/docs/file`
+/// - The target already expresses the full host path including the anchor
+/// - Process: Strip anchor prefix, then rejoin to anchor
+/// - Result: `/tmp/anchor/docs/file` (stays within anchor)
+///
+/// **Case 2: Symlink outside anchor** (virtual-style path)
+/// - Example: Symlink `/tmp/anchor/link` → `/etc/passwd`
+/// - The target is an absolute path outside the anchor
+/// - Process: Strip root prefix (`/`), then join to anchor
+/// - Result: `/tmp/anchor/etc/passwd` (clamped to anchor)
+///
+/// In both cases, the anchor acts as a **virtual root** (`/`), similar to chroot behavior.
+/// This ensures symlinks cannot escape the anchor boundary, regardless of where they point.
+///
 /// ## Features
 /// - **Anchored resolution**: Interprets paths relative to a specific anchor directory
-/// - **Symlink canonicalization**: Follows symlinks to their actual targets (including absolute ones)
+/// - **Virtual filesystem semantics**: Clamps all absolute paths (including symlink targets) to anchor
+/// - **Symlink canonicalization**: Follows symlink chains with clamping at each step
 /// - **Input validation**: Rejects null bytes, malformed UNC paths, and empty paths
 /// - **Cycle detection**: Prevents infinite symlink loops with configurable depth limits
 ///
@@ -403,10 +427,45 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 /// fs::create_dir_all(&anchor)?;
 ///
 /// let base = soft_canonicalize(&anchor)?;
+///
+/// // Absolute input paths are clamped to anchor
 /// let out = anchored_canonicalize(&base, "/etc/passwd")?;
 /// assert_eq!(out, base.join("etc").join("passwd"));
+///
+/// // Lexical .. traversal is also clamped
+/// let out2 = anchored_canonicalize(&base, "../../../etc/passwd")?;
+/// assert_eq!(out2, base.join("etc").join("passwd"));
 /// # Ok(())
 /// # }
+/// # demo().unwrap();
+/// ```
+///
+/// ## Symlink Clamping Example
+/// ```
+/// # #[cfg(unix)]
+/// # fn demo() -> Result<(), std::io::Error> {
+/// use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
+/// use std::os::unix::fs::symlink;
+/// use std::fs;
+///
+/// let anchor = std::env::temp_dir().join("sc_symlink_demo2").join("root");
+/// fs::create_dir_all(&anchor)?;
+/// let base = soft_canonicalize(&anchor)?;
+///
+/// // Create a symlink pointing to absolute path outside anchor
+/// let external_path = std::env::temp_dir().join("external_data2");
+/// fs::create_dir_all(&external_path)?;
+/// let link_path = base.join("mylink");
+/// let _ = fs::remove_file(&link_path); // Clean up if exists
+/// symlink(&external_path, &link_path)?;
+///
+/// // The absolute symlink target is CLAMPED to the anchor
+/// let result = anchored_canonicalize(&base, "mylink")?;
+/// // Result stays within anchor (virtual filesystem semantics)
+/// assert!(result.starts_with(&base));
+/// # Ok(())
+/// # }
+/// # #[cfg(unix)]
 /// # demo().unwrap();
 /// ```
 #[cfg(feature = "anchored")]
@@ -466,22 +525,19 @@ pub fn anchored_canonicalize(
         }
     }
 
-    // Clamp floor: never pop below the canonicalized anchor unless an absolute symlink target is followed.
+    // Clamp floor: all paths (including symlink targets) stay within the anchor.
+    // This implements true virtual filesystem semantics.
     let anchor_floor = base.clone();
-    let mut clamp_enabled = true;
 
-    // Symlink cycles and hop limits are enforced via shared helper used below.
+    // Symlink cycles and hop limits are enforced via the anchored resolver.
 
     while let Some(seg) = queue.pop_front() {
         if seg == std::ffi::OsStr::new(".") {
             continue;
         }
         if seg == std::ffi::OsStr::new("..") {
-            if clamp_enabled {
-                if base != anchor_floor && base.starts_with(&anchor_floor) {
-                    let _ = base.pop();
-                }
-            } else {
+            // Clamp ".." to anchor boundary
+            if base != anchor_floor && base.starts_with(&anchor_floor) {
                 let _ = base.pop();
             }
             continue;
@@ -490,25 +546,20 @@ pub fn anchored_canonicalize(
         // Normal segment: append and then resolve symlinks at this point, chain-aware.
         base.push(&seg);
 
-        // Resolve symlink chain at `base` via shared helper; enforce clamp semantics
+        // Resolve symlink chain at `base` using anchor-aware resolver
+        // that clamps all absolute symlink targets to the anchor
         if let Ok(meta) = fs::symlink_metadata(&base) {
             if meta.file_type().is_symlink() {
-                // Inspect the first hop to decide escape behavior
-                let first_target = fs::read_link(&base)?;
-                let absolute_first = first_target.is_absolute();
+                // Use anchored symlink resolver that implements virtual filesystem semantics
+                let resolved =
+                    crate::symlink::resolve_anchored_symlink_chain(&base, &anchor_floor)?;
 
-                // Use common symlink resolver to inherit security policies
-                let resolved = crate::symlink::resolve_simple_symlink_chain(&base)?;
-                base = resolved;
-
-                if absolute_first {
-                    // Absolute symlink escape: drop clamp per spec
-                    clamp_enabled = false;
-                } else if clamp_enabled {
-                    // Relative symlink: do not allow escape beyond anchor floor
-                    if !base.starts_with(&anchor_floor) {
-                        base = anchor_floor.clone();
-                    }
+                // Final safety check: ensure resolved path is within anchor
+                // (should always be true due to clamping, but verify defensively)
+                if !resolved.starts_with(&anchor_floor) {
+                    base = anchor_floor.clone();
+                } else {
+                    base = resolved;
                 }
             }
         }
@@ -542,8 +593,11 @@ mod tests {
     mod anchored_canonicalize;
     #[cfg(feature = "anchored")]
     mod anchored_security;
+    #[cfg(feature = "anchored")]
+    mod anchored_symlink_clamping;
     mod api_compatibility;
     mod basic_functionality;
+    mod cve_2024_2025_security;
     mod cve_tests;
     mod edge_case_robustness;
     mod edge_cases;
@@ -558,4 +612,6 @@ mod tests {
     mod symlink_depth;
     mod symlink_dotdot_resolution_order;
     mod symlink_dotdot_symlink_first;
+    #[cfg(windows)]
+    mod windows_path_stripping;
 }

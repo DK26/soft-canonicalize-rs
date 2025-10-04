@@ -20,7 +20,7 @@ fn relative_symlink_keeps_clamp() -> std::io::Result<()> {
 }
 
 #[test]
-fn non_existing_anchor_with_input_absolute_symlink_drops_clamp_unix() -> std::io::Result<()> {
+fn non_existing_anchor_with_input_absolute_symlink_is_clamped_unix() -> std::io::Result<()> {
     use std::os::unix::fs::symlink;
     let td = TempDir::new()?;
     let root = td.path().join("root");
@@ -37,18 +37,27 @@ fn non_existing_anchor_with_input_absolute_symlink_drops_clamp_unix() -> std::io
     fs::create_dir_all(target.join("miss"))?;
     // Absolute symlink inside target/miss: target/miss/escape -> abs(outside)
     let abs_outside = fs::canonicalize(&outside)?;
-    symlink(&abs_outside, target.join("miss").join("escape"))?;
+    symlink(abs_outside, target.join("miss").join("escape"))?;
 
     // Anchor includes symlinked segment and non-existing tail
     let anchor = root.join("linked").join("miss");
-    // Input follows absolute symlink at target/miss/escape and drops clamp
-    let out = anchored_canonicalize(anchor, "escape")?;
-    assert_eq!(out, abs_outside);
+    // NEW BEHAVIOR: absolute symlink should be clamped to canonicalized anchor
+    let out = anchored_canonicalize(&anchor, "escape")?;
+
+    // Should be clamped (not escape to abs_outside)
+    let canon_anchor = soft_canonicalize(&anchor)?;
+    assert!(
+        out.starts_with(&canon_anchor),
+        "Absolute symlink should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        out,
+        canon_anchor
+    );
+
     Ok(())
 }
 
 #[test]
-fn absolute_symlink_drops_clamp() -> std::io::Result<()> {
+fn absolute_symlink_is_clamped() -> std::io::Result<()> {
     use std::os::unix::fs::symlink;
     let td = TempDir::new()?;
     let anchor = td.path().join("a").join("b");
@@ -58,10 +67,19 @@ fn absolute_symlink_drops_clamp() -> std::io::Result<()> {
     let outside = td.path().join("outside/target");
     fs::create_dir_all(&outside)?;
     let abs_outside = fs::canonicalize(&outside)?;
-    symlink(&abs_outside, base.join("escape"))?;
+    symlink(abs_outside, base.join("escape"))?;
 
+    // NEW BEHAVIOR: absolute symlink should be clamped to anchor
     let out = anchored_canonicalize(&base, "escape")?;
-    assert_eq!(out, abs_outside);
+
+    // Should be clamped within anchor
+    assert!(
+        out.starts_with(&base),
+        "Absolute symlink should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        out,
+        base
+    );
+
     Ok(())
 }
 
