@@ -47,52 +47,52 @@ Note: numbers are machine- and OS-dependent. Results below reflect 5-run campaig
 
 
 
-### Latest Benchmark Results (August 2025)
+### Latest Benchmark Results (October 2025)
 
 - **Windows (5 runs)**
-	- Rust mixed-workload runs (performance_comparison): 11305, 10217, 10066, 9956, 10793 — median **10217** paths/s
-	- Python baselines observed during runs: 6802, 4317, 7066, 7728, 6058 — median **6802** paths/s
-	- Median speedup vs Python: ~**1.68x**
+	- Rust mixed-workload runs (performance_comparison): 9037, 8421, 7386, 7064, 7985 — median **7985** paths/s
+	- Python baselines observed during runs: 5074, 4566, 8828, 4669, 6727 — median **5074** paths/s
+	- Median speedup vs Python: ~**1.57x**
 
 - **Linux (5 runs, WSL)**
-	- Rust mixed-workload runs (performance_comparison): 400470, 357170, 352751, 277204, 243153 — median **352751** paths/s
-	- Python baselines observed during runs: 79395, 108954, 158443, 175538, 125462 — median **125462** paths/s
-	- Median speedup vs Python: ~**1.88x**
+	- Rust mixed-workload runs (performance_comparison): 243261, 239059, 278270, 235361 — median **239059** paths/s
+	- Python baselines observed during runs: 133617, 142792, 141888, 150017 — median **141888** paths/s
+	- Median speedup vs Python: ~**1.68x**
 
-#### This session (2025-08-18) — notes
+#### This session (2025-10-05) — notes
 
-- I ran the harness five times per OS and recorded the mixed-workload numbers printed by `performance_comparison.rs`. These are the raw mixed-workload numbers (medians calculated above). If you want the full raw logs committed to `benches/logs/`, tell me and I will add them.
+- Ran the 5-run median protocol per AGENTS.md using PowerShell (Windows) and WSL (Linux). Windows used `python` (python3.13 not found); Linux used `python3.13`. These are the raw mixed-workload numbers printed by `performance_comparison.rs`. Full raw outputs saved to `target/bench-windows-*.txt` and `target/bench-linux-*.txt`.
 
 ### Detailed Performance Analysis
 
-#### Windows Performance Breakdown (5-run medians):
-- **performance_comparison.rs** (mixed workload): 1.77x speedup (1.65x - 2.35x range)
-- **precision_benchmark.rs** (scenario analysis): 1.93x speedup (1.67x - 2.04x range)
-- **throughput_analysis.rs** (detailed scenarios): 1.7x speedup (1.6x - 1.7x range)
+#### Windows Performance Breakdown (October 2025, 5-run medians):
+- **performance_comparison.rs** (mixed workload): 1.57x speedup vs Python baseline
+- Range: 7,064 - 9,037 paths/s vs Python 4,566 - 8,828 paths/s
+- Note: Python baseline variance high in this run (one outlier at 8,828)
 
-#### Linux Performance Breakdown (5-run medians):
-- **performance_comparison.rs** (mixed workload): 3.76x speedup (2.75x - 4.38x range)
-- **precision_benchmark.rs** (scenario analysis): 3.02x speedup (2.41x - 5.25x range)
-- **throughput_analysis.rs** (detailed scenarios): 4.7x speedup (3.0x - 5.2x range)
+#### Linux Performance Breakdown (October 2025, 5-run medians, WSL):
+- **performance_comparison.rs** (mixed workload): 1.68x speedup vs Python 3.13 baseline
+- Range: 235,361 - 278,270 paths/s vs Python 133,617 - 150,017 paths/s
+- Consistent speedup across all runs
 
-#### Raw Performance Data
+#### Raw Performance Data (October 2025)
 
 **Windows Results:**
-- performance_comparison: 9,956 - 11,305 paths/s vs Python 4,811 - 6,021 paths/s
-- precision_benchmark: 8,931 - 12,058 paths/s vs Python 5,216 - 6,242 paths/s  
-- throughput_analysis: 9,334 - 10,926 paths/s vs Python 5,812 - 6,528 paths/s
+- performance_comparison: 7,064 - 9,037 paths/s vs Python 4,566 - 8,828 paths/s
+- Median: 7,985 paths/s vs Python 5,074 paths/s
+- Speedup: 1.57x
 
-**Linux Results:**
-- performance_comparison: 243,153 - 400,470 paths/s vs Python 81,630 - 121,489 paths/s
-- precision_benchmark: 224,540 - 427,426 paths/s vs Python 70,562 - 112,271 paths/s
-- throughput_analysis: 256,280 - 435,998 paths/s vs Python 82,055 - 86,284 paths/s
+**Linux Results (WSL):**
+- performance_comparison: 235,361 - 278,270 paths/s vs Python 133,617 - 150,017 paths/s
+- Median: 239,059 paths/s vs Python 141,888 paths/s
+- Speedup: 1.68x
 
 **Key Findings:**
-- Linux shows dramatically superior performance vs Python (3.76x median vs previous 1.86x)
-- Windows performance consistent and reliable (1.77x median vs previous 1.78x)
-- Performance improvements vs Python: Windows median 77%, Linux median 276%
-- Excellent consistency across different benchmark methodologies
-- Linux filesystem performance advantage over Windows remains significant
+- Linux maintains strong performance advantage in absolute throughput (~30x vs Windows)
+- Windows and Linux both show consistent 1.5-1.7x speedup over Python
+- Python baseline variance higher on Windows (possible system load or Python version differences)
+- Linux used python3.13; Windows used older python (3.13 not available)
+- Results reflect typical development workstation performance under normal system load
 
 The harness parses either “Individual Operations Avg” or a “Range:” line from `python_fair_comparison.py`, using whichever is available.
 

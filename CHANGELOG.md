@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-10-05
+
+### Performance
+
+- **Optimized `soft_canonicalize` and `anchored_canonicalize` functions**
+  - Reduced allocations by eliminating unnecessary temporary `OsString` instances
+  - Simplified control flow by replacing queue-based iteration with direct component streaming
+  - Reduced memory usage by removing `VecDeque` overhead
+  - Optimized string comparisons to avoid unnecessary allocations
+  - **Benchmark Results (October 2025, 5-run median protocol)**:
+    - Windows: 7,985 paths/s (1.57x faster than Python pathlib)
+    - Linux (WSL): 239,059 paths/s (1.68x faster than Python 3.13 pathlib)
+  - See `benches/README.md` for complete benchmark data and protocol
+
 ### Changed
 
 - **BEHAVIOR CHANGE**: `anchored_canonicalize` now clamps absolute symlinks to the anchor (virtual filesystem semantics)

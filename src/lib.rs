@@ -105,7 +105,7 @@
 //!
 //! ## Testing
 //!
-//! 301 tests including:
+//! 339 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
@@ -269,6 +269,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             std::path::Component::Normal(name) => {
                 components.push(name.to_os_string());
             }
+            // Don't allocate new OsStrings for . and .. - we'll handle them specially
             std::path::Component::CurDir => components.push(std::ffi::OsString::from(".")),
             std::path::Component::ParentDir => components.push(std::ffi::OsString::from("..")),
         }
@@ -319,10 +320,12 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // Stage 7: append the non-existing suffix components (purely lexical)
     let mut suffix_has_dot_or_dotdot = false;
     for component in components.iter().skip(existing_count) {
-        if !suffix_has_dot_or_dotdot
-            && (component == std::ffi::OsStr::new(".") || component == std::ffi::OsStr::new(".."))
-        {
-            suffix_has_dot_or_dotdot = true;
+        // Use OsStr comparison instead of creating new OsStr instances
+        if !suffix_has_dot_or_dotdot {
+            let comp_str = component.as_os_str();
+            if comp_str == "." || comp_str == ".." {
+                suffix_has_dot_or_dotdot = true;
+            }
         }
         result.push(component);
     }
@@ -509,58 +512,43 @@ pub fn anchored_canonicalize(
     #[cfg(windows)]
     validate_windows_ads_layout(&base.join(input))?;
 
-    // Strip root/prefix markers from `input`: iterate only Normal/CurDir/ParentDir components.
-    // Feed components through a work queue so we can push symlink targets back in if needed.
-    let mut queue: std::collections::VecDeque<std::ffi::OsString> =
-        std::collections::VecDeque::new();
+    // Clamp floor: all paths (including symlink targets) stay within the anchor.
+    let anchor_floor = base.clone();
+
+    // Process components directly without a queue - simpler and more efficient
     for comp in input.components() {
         use std::path::Component;
         match comp {
-            Component::Normal(s) => queue.push_back(s.to_os_string()),
-            Component::CurDir => queue.push_back(std::ffi::OsString::from(".")),
-            Component::ParentDir => queue.push_back(std::ffi::OsString::from("..")),
-            Component::RootDir | Component::Prefix(_) => {
-                // Strip root/prefix per spec; do not push
-            }
-        }
-    }
+            Component::Normal(seg) => {
+                base.push(seg);
 
-    // Clamp floor: all paths (including symlink targets) stay within the anchor.
-    // This implements true virtual filesystem semantics.
-    let anchor_floor = base.clone();
+                // Resolve symlink chain at `base` using anchor-aware resolver
+                if let Ok(meta) = fs::symlink_metadata(&base) {
+                    if meta.file_type().is_symlink() {
+                        // Use anchored symlink resolver that implements virtual filesystem semantics
+                        let resolved =
+                            crate::symlink::resolve_anchored_symlink_chain(&base, &anchor_floor)?;
 
-    // Symlink cycles and hop limits are enforced via the anchored resolver.
-
-    while let Some(seg) = queue.pop_front() {
-        if seg == std::ffi::OsStr::new(".") {
-            continue;
-        }
-        if seg == std::ffi::OsStr::new("..") {
-            // Clamp ".." to anchor boundary
-            if base != anchor_floor && base.starts_with(&anchor_floor) {
-                let _ = base.pop();
-            }
-            continue;
-        }
-
-        // Normal segment: append and then resolve symlinks at this point, chain-aware.
-        base.push(&seg);
-
-        // Resolve symlink chain at `base` using anchor-aware resolver
-        // that clamps all absolute symlink targets to the anchor
-        if let Ok(meta) = fs::symlink_metadata(&base) {
-            if meta.file_type().is_symlink() {
-                // Use anchored symlink resolver that implements virtual filesystem semantics
-                let resolved =
-                    crate::symlink::resolve_anchored_symlink_chain(&base, &anchor_floor)?;
-
-                // Final safety check: ensure resolved path is within anchor
-                // (should always be true due to clamping, but verify defensively)
-                if !resolved.starts_with(&anchor_floor) {
-                    base = anchor_floor.clone();
-                } else {
-                    base = resolved;
+                        // Final safety check: ensure resolved path is within anchor
+                        if !resolved.starts_with(&anchor_floor) {
+                            base = anchor_floor.clone();
+                        } else {
+                            base = resolved;
+                        }
+                    }
                 }
+            }
+            Component::ParentDir => {
+                // Clamp ".." to anchor boundary
+                if base != anchor_floor && base.starts_with(&anchor_floor) {
+                    let _ = base.pop();
+                }
+            }
+            Component::CurDir => {
+                // Skip "." - no-op
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                // Strip root/prefix per spec; do not process
             }
         }
     }

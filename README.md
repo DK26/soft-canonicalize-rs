@@ -13,9 +13,9 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.8x (10,217 paths/s), Linux ~3.8x (352,751 paths/s) faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.4x (7,985 paths/s), Linux ~1.7x (235,361 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 301 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 339 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -85,7 +85,7 @@ Key features of `anchored_canonicalize`:
 
 ### Test Coverage
 
-**301 comprehensive tests** including:
+**339 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
