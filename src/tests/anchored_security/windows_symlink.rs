@@ -13,12 +13,24 @@ fn anchored_relative_symlink_keeps_clamp_windows() -> std::io::Result<()> {
     fs::create_dir_all(&anchor)?;
     fs::create_dir_all(&target_parent)?;
     let special_target = target_parent.join("special");
-    fs::create_dir(&special_target)?;
+    fs::create_dir(special_target)?;
+
+    // Create the destination path that will exist after clamping and traversal
+    // This ensures canonicalization can expand 8.3 short names in the full path
+    let clamped_base = anchor.join("opt").join("subdir");
+    fs::create_dir_all(&clamped_base)?;
+    let hello_world = clamped_base.join("hello").join("world");
+    fs::create_dir_all(hello_world)?;
 
     let base = soft_canonicalize(&anchor)?; // extended-length form
 
     let link = base.join("special");
-    match symlink_dir(&special_target, link) {
+    // Create a RELATIVE symlink from link location to target
+    // link: TempDir/home/jail/special
+    // target: TempDir/opt/subdir/special
+    // relative path from link to target: ../../opt/subdir/special
+    let relative_target = r"..\..\opt\subdir\special";
+    match symlink_dir(relative_target, link) {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
@@ -29,11 +41,16 @@ fn anchored_relative_symlink_keeps_clamp_windows() -> std::io::Result<()> {
         }
     }
 
-    // Relative traversal should keep clamp under the anchor
+    // Test: Relative symlink resolution with path traversal
+    // The symlink is relative: special -> ../../opt/subdir/special
+    // When we traverse: special/.../hello/world
+    // The symlink resolves to: anchor/../../opt/subdir/special (normalized: TempDir/opt/subdir/special)
+    // With virtual filesystem clamping: relative symlinks stay clamped to anchor
+    // So the resolved path becomes: anchor/opt/subdir/special
+    // Then .. brings us to: anchor/opt/subdir
+    // Finally adding hello/world: anchor/opt/subdir/hello/world
     let out = anchored_canonicalize(&base, r"special\..\hello\world")?;
-    let expected = soft_canonicalize(&target_parent)?
-        .join("hello")
-        .join("world");
+    let expected = base.join("opt").join("subdir").join("hello").join("world");
     assert_eq!(out, expected);
     Ok(())
 }

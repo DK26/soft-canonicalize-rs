@@ -100,11 +100,20 @@ These scripts:
 
 - Anchored semantics:
   - `anchored_canonicalize` soft-canonicalizes the anchor internally. Do not pre-canonicalize anchors in examples unless demonstrating manual behavior.
-  - Clamp behavior: lexical `..` clamps to the anchor. Following an absolute symlink disables clamp (escape is allowed by design). Relative symlinks keep clamp. Write tests that affirm these rules explicitly.
+  - **Virtual filesystem semantics (v0.4.0+)**: The anchor acts as a virtual root. All symlinks (both absolute and relative) that resolve outside the anchor are clamped back into the virtual filesystem.
+    - Absolute symlinks: Reinterpreted relative to the anchor (e.g., `/etc/passwd` → `anchor/etc/passwd`)
+    - Relative symlinks that escape: Clamped using common ancestor logic (e.g., `../../opt/file` → `anchor/opt/file`)
+    - Lexical `..` traversal: Always clamps to the anchor boundary
+  - Write tests that affirm these clamping rules explicitly using exact path assertions.
 
 - Symlinks in tests:
   - Unix: symlink creation is reliable; create real symlinks and assert exact resolved results.
-  - Windows: symlink creation may require privileges; tests that depend on symlinks should skip gracefully on `PermissionDenied` (or raw OS 1314). We already have such patterns in `src/tests/anchored_security/windows_symlink.rs`.
+  - Windows: symlink creation requires privileges (error 1314 = `ERROR_PRIVILEGE_NOT_HELD`).
+    - **Local testing policy**: Tests should skip gracefully on symlink privilege errors. Local developers and `ci-local` scripts run without elevated privileges, and these tests will be validated by GitHub Actions runners which have symlink privileges enabled.
+    - **Test implementation patterns**:
+      - **Regression/behavior tests**: Always skip gracefully on error 1314 with a clear message (e.g., "skipping: symlink creation not permitted"). These are the majority of tests and must not fail locally.
+      - **Diagnostic tests**: May panic on error 1314 to inform developers that the diagnostic requires privileges to run locally. These are debugging tools, not regular tests.
+    - **CI environment**: GitHub Actions Windows runners have symlink privileges enabled, so all symlink tests (both regression and diagnostic) will execute fully in CI.
 
 - Environment assumptions:
   - Do not depend on global machine directories (e.g., `C:\\Users`) unless you defend with a skip or your assertion is valid for non-existing paths as well.
@@ -123,7 +132,7 @@ These scripts:
     let out = anchored_canonicalize(anchor, r"hello\\world")?;
     assert_eq!(out, std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world"));
     ```
-  - Relative symlink keeps clamp (Windows example uses skip-on-1314 pattern; see existing tests): ensure equality with exact expected path, not hints.
+  - Relative symlink keeps clamp (Windows example fails on local machines without privileges but runs on GitHub Actions): ensure equality with exact expected path, not hints.
 
 - Virtual vs system paths (for downstream crates):
   - If a downstream crate exposes a “virtual” display that’s lexical, assert lexical results there.

@@ -149,7 +149,7 @@ jobs:
         echo "Then run: cargo clippy --all-targets --all-features -- -D warnings"
 
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --all-features --verbose
 
   docs:
     name: Documentation

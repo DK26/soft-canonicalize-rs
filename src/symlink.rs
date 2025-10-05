@@ -137,8 +137,24 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     // CLAMP: Convert absolute symlink target to be relative to anchor
                     // This implements virtual filesystem semantics
 
-                    // First, try to strip the anchor itself from the target
-                    // This handles symlinks pointing within the anchor correctly
+                    // On Windows, we DON'T canonicalize absolute symlink targets at all
+                    // because canonicalization expands their full path, breaking the clamping logic.
+                    // The target will be stripped and clamped as-is, which is correct for
+                    // virtual filesystem semantics where we treat the symlink as if it were
+                    // absolute within the virtual root (anchor).
+                    //
+                    // Note: This means symlink targets may contain 8.3 short names in the
+                    // clamped result, but this is acceptable because:
+                    // 1. The paths are still valid and accessible
+                    // 2. Trying to expand them would require knowing the "virtual root" context
+                    // 3. For relative symlinks, we handle 8.3 expansion separately
+                    #[cfg(not(windows))]
+                    let target = target.clone();
+
+                    #[cfg(windows)]
+                    let target = target.clone();
+
+                    // Now strip the anchor prefix (for targets within anchor)
                     if let Ok(rel) = target.strip_prefix(anchor) {
                         // Target is already within anchor: /anchor/foo -> foo
                         // Rejoin to anchor to normalize: anchor/foo
@@ -149,14 +165,56 @@ pub(crate) fn resolve_anchored_symlink_chain(
                         let stripped = strip_root_prefix(&target);
                         current = anchor.join(stripped);
                     }
-                } else if let Some(parent) = current.parent() {
-                    // Relative symlink: resolve from parent as normal
-                    current = simple_normalize_path(&parent.join(target));
                 } else {
-                    current = target;
+                    // Relative symlink: resolve from parent as normal
+                    let parent = current.parent();
+                    if let Some(p) = parent {
+                        current = simple_normalize_path(&p.join(target));
+
+                        // FIX: Re-canonicalize on Windows to ensure:
+                        // 1. Prefix format consistency (\\?\ vs regular paths)
+                        // 2. 8.3 short names are expanded to full names
+                        // This is critical because simple_normalize_path only handles . and ..,
+                        // but doesn't expand short names like RUNNER~1 -> runneradmin
+                        #[cfg(windows)]
+                        if current.exists() {
+                            use std::path::Prefix;
+
+                            // Check if anchor has extended-length prefix (\\?\)
+                            let anchor_has_prefix = anchor.components().next().is_some_and(|c| {
+                                matches!(c, std::path::Component::Prefix(p) if matches!(
+                                    p.kind(),
+                                    Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _) | Prefix::Verbatim(_)
+                                ))
+                            });
+
+                            // Check if current has extended-length prefix
+                            let current_has_prefix = current.components().next().is_some_and(|c| {
+                                matches!(c, std::path::Component::Prefix(p) if matches!(
+                                    p.kind(),
+                                    Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _) | Prefix::Verbatim(_)
+                                ))
+                            });
+
+                            // Only re-canonicalize if there's a prefix mismatch
+                            // (anchor has \\?\ but current doesn't)
+                            if anchor_has_prefix && !current_has_prefix {
+                                // Re-canonicalize to ensure matching prefix format and expand 8.3 names
+                                if let Ok(canonicalized) = std::fs::canonicalize(&current) {
+                                    current = canonicalized;
+                                }
+                                // If canonicalization fails, continue with current path;
+                                // starts_with may still work
+                            }
+                        }
+                    } else {
+                        current = target.clone();
+                    }
                 }
             }
-            Err(_) => break, // not a symlink or cannot read; stop here
+            Err(_e) => {
+                break; // not a symlink or cannot read; stop here
+            }
         }
     }
 

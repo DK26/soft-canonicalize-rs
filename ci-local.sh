@@ -230,6 +230,8 @@ echo
 run_check "Format Check" "cargo fmt --all -- --check"
 run_check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
+# Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
+export SKIP_PERMISSION_TESTS=1
 run_check "Tests (includes compilation)" "cargo test --verbose"
 run_check "Tests (all features)" "cargo test --all-features --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed

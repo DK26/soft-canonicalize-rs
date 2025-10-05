@@ -190,6 +190,8 @@ Write-Host ""
 Run-Check "Format Check" "cargo fmt --all -- --check"
 Run-Check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
+# Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
+$env:SKIP_PERMISSION_TESTS = "1"
 Run-Check "Tests (includes compilation)" "cargo test --verbose"
 Run-Check "Tests (all features)" "cargo test --all-features --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed

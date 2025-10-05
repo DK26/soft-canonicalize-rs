@@ -531,7 +531,30 @@ pub fn anchored_canonicalize(
 
                         // Final safety check: ensure resolved path is within anchor
                         if !resolved.starts_with(&anchor_floor) {
+                            // Virtual filesystem semantics: reinterpret escaped path as relative to anchor
+                            // Find common ancestor and preserve relative path structure
+                            // Example: resolved = /tmp/xyz/opt/file, anchor = /tmp/xyz/home/jail
+                            // Common ancestor: /tmp/xyz
+                            // Resolved relative to common: opt/file
+                            // Result: /tmp/xyz/home/jail/opt/file
+
+                            // Find longest common prefix by comparing components
+                            let mut common_depth = 0;
+                            let anchor_comps: Vec<_> = anchor_floor.components().collect();
+                            let resolved_comps: Vec<_> = resolved.components().collect();
+                            for (a, r) in anchor_comps.iter().zip(resolved_comps.iter()) {
+                                if a == r {
+                                    common_depth += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            // Build clamped path: anchor + (resolved components after common prefix)
                             base = anchor_floor.clone();
+                            for comp in resolved_comps.iter().skip(common_depth) {
+                                base.push(comp);
+                            }
                         } else {
                             base = resolved;
                         }
