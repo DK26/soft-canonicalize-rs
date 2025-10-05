@@ -39,7 +39,7 @@ fn anchored_relative_symlink_keeps_clamp_windows() -> std::io::Result<()> {
 }
 
 #[test]
-fn anchored_absolute_symlink_drops_clamp_windows() -> std::io::Result<()> {
+fn anchored_absolute_symlink_is_clamped_windows() -> std::io::Result<()> {
     use std::io;
     use std::os::windows::fs::symlink_dir;
 
@@ -53,7 +53,7 @@ fn anchored_absolute_symlink_drops_clamp_windows() -> std::io::Result<()> {
     let abs_outside = soft_canonicalize(&outside)?;
 
     let link = base.join("escape");
-    match symlink_dir(&abs_outside, link) {
+    match symlink_dir(abs_outside, link) {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
@@ -64,13 +64,22 @@ fn anchored_absolute_symlink_drops_clamp_windows() -> std::io::Result<()> {
         }
     }
 
+    // NEW BEHAVIOR: absolute symlink should be clamped to anchor
     let out = anchored_canonicalize(&base, r"escape")?;
-    assert_eq!(out, abs_outside);
+
+    // Should be clamped within anchor
+    assert!(
+        out.starts_with(&base),
+        "Absolute symlink should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        out,
+        base
+    );
+
     Ok(())
 }
 
 #[test]
-fn non_existing_anchor_with_input_absolute_symlink_drops_clamp_windows() -> std::io::Result<()> {
+fn non_existing_anchor_with_input_absolute_symlink_is_clamped_windows() -> std::io::Result<()> {
     use std::io;
     use std::os::windows::fs::symlink_dir;
 
@@ -98,7 +107,7 @@ fn non_existing_anchor_with_input_absolute_symlink_drops_clamp_windows() -> std:
     fs::create_dir_all(target.join("miss"))?;
     // Absolute symlink inside target\miss: target\miss\escape -> abs(outside)
     let abs_outside = soft_canonicalize(&outside)?;
-    match symlink_dir(&abs_outside, target.join("miss").join("escape")) {
+    match symlink_dir(abs_outside, target.join("miss").join("escape")) {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
@@ -111,8 +120,17 @@ fn non_existing_anchor_with_input_absolute_symlink_drops_clamp_windows() -> std:
 
     // Anchor includes symlinked segment and may include non-existing tail
     let anchor = root.join("linked").join("miss");
-    // Input follows absolute symlink under target\miss and drops clamp
-    let out = anchored_canonicalize(anchor, r"escape")?;
-    assert_eq!(out, abs_outside);
+    // NEW BEHAVIOR: absolute symlink should be clamped to the canonicalized anchor
+    let out = anchored_canonicalize(&anchor, r"escape")?;
+
+    // Result should be clamped (not escape to abs_outside)
+    let canon_anchor = soft_canonicalize(&anchor)?;
+    assert!(
+        out.starts_with(&canon_anchor),
+        "Absolute symlink should be clamped to anchor. Got: {:?}, Anchor: {:?}",
+        out,
+        canon_anchor
+    );
+
     Ok(())
 }

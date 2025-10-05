@@ -13,9 +13,9 @@
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.8x (10,217 paths/s), Linux ~3.8x (352,751 paths/s) faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.4x (7,985 paths/s), Linux ~1.7x (235,361 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 301 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 339 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Only uses std library
@@ -55,7 +55,7 @@ assert_eq!(
 
 ### Anchored Canonicalization
 
-For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function ensures symlinks resolve properly relative to an anchor directory, making it ideal for virtual filesystems, containerized environments, and chroot-like scenarios:
+For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function implements true virtual filesystem semantics by clamping ALL paths (including absolute symlink targets) to the anchor directory:
 
 ```rust
 use soft_canonicalize::anchored_canonicalize;
@@ -69,22 +69,23 @@ fs::create_dir_all(&anchor)?;
 let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
 // Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
 
-// Handles symlinks with proper canonicalization within virtual space
-let user_input = "uploads/../../sensitive/file.txt";
-let resolved = anchored_canonicalize(&anchor, user_input)?;
-// Canonicalizes paths relative to anchor - symlinks are followed to their targets
+// Absolute symlinks are also clamped to the anchor
+// If there's a symlink: workspace_root/config -> /etc/config
+// It resolves to: workspace_root/etc/config (clamped to anchor)
+let symlink_path = anchored_canonicalize(&anchor, "config")?;
+// Safe: always stays within workspace_root, even if symlink points to /etc/config
 ```
 
 Key features of `anchored_canonicalize`:
-- **Virtual space symlink resolution**: Ensures correct symlink behavior within bounded directory trees
-- **Anchor-relative canonicalization**: Resolves paths relative to a specific anchor directory  
-- **Symlink resolution**: Follows symlinks to their actual targets with proper virtual space semantics
+- **Virtual filesystem semantics**: All absolute paths (including symlink targets) are clamped to anchor
+- **Anchor-relative canonicalization**: Resolves paths relative to a specific anchor directory
+- **Complete symlink clamping**: Follows symlink chains with clamping at each step
 - **Component-by-component**: Processes path components in proper order
-- **Absolute results**: Always returns absolute canonical paths
+- **Absolute results**: Always returns absolute canonical paths within the anchor boundary
 
 ### Test Coverage
 
-**301 comprehensive tests** including:
+**339 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  

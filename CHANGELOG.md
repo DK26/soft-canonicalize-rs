@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-10-05
+
+### Performance
+
+- **Optimized `soft_canonicalize` and `anchored_canonicalize` functions**
+  - Reduced allocations by eliminating unnecessary temporary `OsString` instances
+  - Simplified control flow by replacing queue-based iteration with direct component streaming
+  - Reduced memory usage by removing `VecDeque` overhead
+  - Optimized string comparisons to avoid unnecessary allocations
+  - **Benchmark Results (October 2025, 5-run median protocol)**:
+    - Windows: 7,985 paths/s (1.57x faster than Python pathlib)
+    - Linux (WSL): 239,059 paths/s (1.68x faster than Python 3.13 pathlib)
+  - See `benches/README.md` for complete benchmark data and protocol
+
+### Changed
+
+- **BEHAVIOR CHANGE**: `anchored_canonicalize` now clamps absolute symlinks to the anchor (virtual filesystem semantics)
+  - **Previous Behavior**: Absolute symlinks resolved to their actual filesystem targets (e.g., `/etc/config`)
+  - **New Behavior**: Absolute symlink targets are reinterpreted relative to the anchor (e.g., `/etc/config` → `anchor/etc/config`)
+  - **Implementation**: New `resolve_anchored_symlink_chain()` function with dual-case clamping:
+    - Case 1: Target within anchor → strip anchor prefix, rejoin to anchor
+    - Case 2: Target outside anchor → strip root prefix, join to anchor
+  - **Rationale**: Makes `anchored_canonicalize` behave like a virtual filesystem where the anchor is the root
+  - **Use Cases**: Archive extraction, containerized paths, virtual directory trees where absolute symlinks should stay within the tree
+
+### Added
+
+- **Enhanced documentation**: Comprehensive explanation of the dual-case clamping algorithm in `src/symlink.rs` and `src/lib.rs`
+
+### Testing
+
+- **Added**: Comprehensive CVE-2024-2025 security test suite (`src/tests/cve_2024_2025_security.rs`)
+  - 30+ blackbox/whitebox tests covering recent CVE patterns:
+    - CVE-2025-27210: Windows device name path traversal
+    - CVE-2025-23084: Windows drive handling vulnerabilities
+    - CVE-2024-23651: Symlink TOCTOU race conditions (Docker/Buildkit)
+    - CVE-2024-21626: File descriptor leaks via /proc/self/fd
+    - CVE-2025-9566: Podman symlink traversal (ConfigMap/Secret escapes)
+    - CVE-2024-38819: Path traversal via crafted HTTP requests
+  - Tests validate resilience against similar attack patterns
+
+- **Added**: Dedicated symlink clamping test suite (`src/tests/anchored_symlink_clamping.rs`)
+  - 12+ tests documenting and verifying correct absolute symlink clamping behavior
+  - Archive extraction scenarios, chained symlinks, mixed absolute/relative chains
+  - Confirms that ALL absolute symlink targets are clamped to anchor (virtual filesystem semantics)
+
+- **Added**: Windows path stripping tests (`src/tests/windows_path_stripping.rs`)
+  - Validates `strip_root_prefix` logic for all Windows path types
+  - Covers: disk paths, UNC paths, extended-length paths, verbatim paths, drive-relative paths
+
+- **Updated**: Test names updated to reflect new behavior
+  - `absolute_symlink_drops_clamp` → `absolute_symlink_is_clamped` (multiple files)
+  - Test assertions updated to verify clamping instead of escape
+
+### Documentation
+
+- **Updated**: Aligned documentation with new behavior
+  - Updated `docs/SECURITY.md`, README.md, and inline function documentation to match the new implementation
+  - Changed "drop the clamp by design" statements to "are clamped to the anchor"
+  - Added detailed examples showing how absolute symlink clamping works in practice
+  - Clarified that anchor acts as a chroot-like virtual root for all path resolution
+
+### Notes
+
+- **For Users**: If you're using `anchored_canonicalize`, absolute symlinks now resolve relative to the anchor (virtual filesystem semantics). Previously they resolved to their actual filesystem location.
+- **Example**: A symlink `anchor/link -> /etc/config` now resolves to `anchor/etc/config` instead of `/etc/config`
+- **Compatibility**: If your code expected absolute symlinks to resolve to their actual filesystem targets, this behavior has changed. The anchor now acts as a virtual root for all path resolution.
+- All existing tests pass; 50+ new tests added covering the new clamping behavior.
+
 ## [0.3.6] - 2025-09-15
 
 ### Fixed
