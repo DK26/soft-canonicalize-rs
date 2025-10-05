@@ -105,7 +105,7 @@
 //!
 //! ## Testing
 //!
-//! 339 tests including:
+//! 366 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
