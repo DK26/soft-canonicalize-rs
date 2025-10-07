@@ -617,6 +617,7 @@ mod tests {
     mod cve_tests;
     mod edge_case_robustness;
     mod edge_cases;
+    mod exotic_edge_cases;
     mod optimization;
     mod path_traversal;
     mod platform_specific;
