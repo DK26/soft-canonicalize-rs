@@ -18,9 +18,33 @@ fn test_existing_path() -> std::io::Result<()> {
 
     // Test with existing directory
     let result = soft_canonicalize(temp_dir.path())?;
-    let expected = fs::canonicalize(temp_dir.path())?;
+    let std_result = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    // WITHOUT dunce: EXACT match with std (UNC format on Windows)
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, std_result, "Without dunce: must match std EXACTLY");
+    }
+
+    // WITH dunce: Simplified format (no \\?\ when safe)
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(
+                !result_str.starts_with(r"\\?\"),
+                "dunce should simplify safe paths"
+            );
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            // Unix: should be identical
+            assert_eq!(result, std_result);
+        }
+    }
     Ok(())
 }
 
@@ -32,10 +56,44 @@ fn test_non_existing_path() -> std::io::Result<()> {
         .join("non_existing_sub_dir/non_existing_file.txt");
 
     let result = soft_canonicalize(non_existing)?;
-    let expected =
-        fs::canonicalize(temp_dir.path())?.join("non_existing_sub_dir/non_existing_file.txt");
 
-    assert_eq!(result, expected);
+    // Build expected: canonicalize the existing base, then add non-existing tail
+    let base_canonical = fs::canonicalize(temp_dir.path())?;
+    let expected_tail = base_canonical.join("non_existing_sub_dir/non_existing_file.txt");
+
+    // WITHOUT dunce: EXACT match (UNC format on Windows)
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(
+            result, expected_tail,
+            "Without dunce: must match expected UNC format"
+        );
+    }
+
+    // WITH dunce: Simplified format when safe
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected_tail.to_string_lossy();
+            assert!(
+                !result_str.starts_with(r"\\?\"),
+                "dunce should simplify non-existing paths"
+            );
+            assert!(
+                expected_str.starts_with(r"\\?\"),
+                "expected has UNC from std"
+            );
+            // Verify semantic equivalence by checking path ends correctly
+            assert!(result_str.ends_with(r"non_existing_sub_dir\non_existing_file.txt"));
+        }
+        #[cfg(not(windows))]
+        {
+            // Unix: should be identical
+            assert_eq!(result, expected_tail);
+        }
+    }
 
     Ok(())
 }
@@ -55,8 +113,39 @@ fn test_relative_path() -> std::io::Result<()> {
         .join("relative")
         .join("path.txt");
 
-    // The result should be exactly current_dir/non/existing/relative/path.txt
-    assert_eq!(result, expected);
+    // Result should be absolute and equal to current_dir + relative_path
+    assert!(result.is_absolute());
+    assert!(result.ends_with("non/existing/relative/path.txt"));
+
+    // WITHOUT dunce: EXACT match (UNC on Windows)
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match");
+    }
+
+    // WITH dunce: Simplified format
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(
+                !result_str.starts_with(r"\\?\"),
+                "dunce should simplify relative paths"
+            );
+            assert!(
+                expected_str.starts_with(r"\\?\"),
+                "expected has UNC from std"
+            );
+            // Verify path ends correctly
+            assert!(result_str.ends_with(r"non\existing\relative\path.txt"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
 
     Ok(())
 }
@@ -95,7 +184,10 @@ fn test_readme_examples() -> std::io::Result<()> {
     // Example 2: Security validation function from README
     fn is_safe_path(user_path: &str, jail: &std::path::Path) -> std::io::Result<bool> {
         let canonical_user = soft_canonicalize(user_path)?;
-        let canonical_jail = std::fs::canonicalize(jail)?;
+        let canonical_jail = soft_canonicalize(jail)?;
+
+        // Both paths are now in the same format (UNC or simplified based on dunce feature)
+        // Direct comparison works correctly
         Ok(canonical_user.starts_with(canonical_jail))
     }
 

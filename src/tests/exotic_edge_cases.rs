@@ -109,13 +109,22 @@ fn test_long_paths_with_multibyte_characters() {
     );
 
     if let Ok(resolved) = result {
-        let resolved_str = resolved.to_string_lossy();
-        // Should use extended-length format on Windows
-        assert!(
-            resolved_str.starts_with(r"\\?\"),
-            "Should use extended-length format for absolute result: {}",
-            resolved_str
-        );
+        // With dunce: May be simplified if safe; without dunce: always UNC
+        #[cfg(not(feature = "dunce"))]
+        {
+            let resolved_str = resolved.to_string_lossy();
+            assert!(
+                resolved_str.starts_with(r"\\?\"),
+                "Should use extended-length format for absolute result: {}",
+                resolved_str
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce, accept either format (dunce decides based on safety)
+            // Just verify it's an absolute path
+            assert!(resolved.is_absolute(), "Result should be absolute");
+        }
     }
 
     // Create path with CJK characters

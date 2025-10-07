@@ -22,7 +22,26 @@ fn test_hybrid_optimization_compatibility() -> std::io::Result<()> {
     let existing_path = existing_dir.join("file");
     let result = soft_canonicalize(&existing_path)?;
     let std_result = std::fs::canonicalize(&existing_path)?;
-    assert_eq!(result, std_result);
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, std_result, "Without dunce: exact match");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, std_result);
+        }
+    }
 
     // Test non-existing path (would use lexical approach in hybrid)
     let non_existing_path = base.join("non_existing/file.txt");

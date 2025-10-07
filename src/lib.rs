@@ -6,7 +6,7 @@
 //! - Matches `std::fs::canonicalize` exactly for fully-existing paths
 //! - Extends canonicalization to non-existing suffixes
 //! - Preserves robust behavior across Windows, macOS, and Linux
-//! - Provides zero-dependency, security-focused implementation
+//! - Zero dependencies (optional features may add dependencies)
 //!
 //! ## Rust equivalent of Unix `realpath()` / `std::fs::canonicalize`
 //!
@@ -52,36 +52,6 @@
 //! # }
 //! ```
 //!
-//! ### Anchored Canonicalization (Security-Focused)
-//!
-//! For secure path handling within a known root directory:
-//!
-//! ```rust
-//! # #[cfg(feature = "anchored")]
-//! use soft_canonicalize::{anchored_canonicalize, soft_canonicalize};
-//! # #[cfg(not(feature = "anchored"))]
-//! # use soft_canonicalize::soft_canonicalize;
-//! use std::fs;
-//!
-//! # fn example() -> Result<(), std::io::Error> {
-//! // Set up an anchor directory
-//! let root = std::env::temp_dir().join("workspace_root");
-//! fs::create_dir_all(&root)?;
-//! // No need to pre-canonicalize: anchored_canonicalize soft-canonicalizes the anchor internally
-//! let anchor = &root;
-//!
-//! // Canonicalize user input relative to anchor
-//! let user_input = "../../../etc/passwd";
-//! # #[cfg(feature = "anchored")]
-//! let resolved_path = anchored_canonicalize(anchor, user_input)?;
-//! # #[cfg(not(feature = "anchored"))]
-//! # { let _ = user_input; }
-//! # #[cfg(feature = "anchored")]
-//! # let _ = resolved_path;
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! ## How It Works
 //!
 //! 1. Input validation (empty path, platform pre-checks)
@@ -102,15 +72,117 @@
 //! - Windows NTFS ADS validation performed early and after normalization
 //! - Embedded NUL byte checks on all platforms
 //!
+//! ## Optional Features
+//!
+//! ### Anchored Canonicalization (`anchored` feature)
+//!
+//! For **correct symlink resolution within virtual/constrained directory spaces**, use
+//! `anchored_canonicalize`. This function implements true virtual filesystem semantics by
+//! clamping ALL paths (including absolute symlink targets) to the anchor directory:
+//!
+//! ```toml
+//! [dependencies]
+//! soft-canonicalize = { version = "0.4", features = ["anchored"] }
+//! ```
+//!
+//! ```rust
+//! # #[cfg(feature = "anchored")]
+//! use soft_canonicalize::anchored_canonicalize;
+//! # #[cfg(not(feature = "anchored"))]
+//! # use soft_canonicalize::soft_canonicalize;
+//! use std::fs;
+//!
+//! # fn example() -> Result<(), std::io::Error> {
+//! // Set up an anchor/root directory (no need to pre-canonicalize)
+//! let anchor = std::env::temp_dir().join("workspace_root");
+//! fs::create_dir_all(&anchor)?;
+//!
+//! // Canonicalize paths relative to the anchor (anchor is soft-canonicalized internally)
+//! # #[cfg(feature = "anchored")]
+//! let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
+//! # #[cfg(not(feature = "anchored"))]
+//! # { let _ = (&anchor, "../../../etc/passwd"); }
+//! // Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
+//!
+//! // Absolute symlinks are also clamped to the anchor
+//! // If there's a symlink: workspace_root/config -> /etc/config
+//! // It resolves to: workspace_root/etc/config (clamped to anchor)
+//! # #[cfg(feature = "anchored")]
+//! let symlink_path = anchored_canonicalize(&anchor, "config")?;
+//! # #[cfg(not(feature = "anchored"))]
+//! # { let _ = "config"; }
+//! // Safe: always stays within workspace_root, even if symlink points to /etc/config
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **Key features:**
+//! - Virtual filesystem semantics: All absolute paths (including symlink targets) are clamped to anchor
+//! - Anchor-relative canonicalization: Resolves paths relative to a specific anchor directory
+//! - Complete symlink clamping: Follows symlink chains with clamping at each step
+//! - Component-by-component: Processes path components in proper order
+//! - Absolute results: Always returns absolute canonical paths within the anchor boundary
+//!
+//! ### Simplified Path Output (`dunce` feature)
+//!
+//! By default, `soft_canonicalize` returns Windows paths in extended-length UNC format
+//! (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names,
+//! and other Windows filesystem edge cases.
+//!
+//! If you need simplified paths (`C:\foo`) for compatibility with legacy applications or
+//! user-facing output, enable the **`dunce` feature**:
+//!
+//! ```toml
+//! [dependencies]
+//! soft-canonicalize = { version = "0.4", features = ["dunce"] }
+//! ```
+//!
+//! **Example:**
+//!
+//! ```rust
+//! use soft_canonicalize::soft_canonicalize;
+//! # fn example() -> Result<(), std::io::Error> {
+//! # #[cfg(windows)]
+//! # {
+//! let path = soft_canonicalize(r"C:\Users\user\documents\..\config.json")?;
+//!
+//! // Without dunce feature (default):
+//! // Returns: \\?\C:\Users\user\config.json (extended-length UNC)
+//!
+//! // With dunce feature enabled:
+//! // Returns: C:\Users\user\config.json (simplified when safe)
+//! # }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **When to use:**
+//! - ✅ Legacy applications that don't support UNC paths
+//! - ✅ User-facing output requiring familiar path format
+//! - ✅ Tools expecting traditional Windows path format
+//!
+//! **How it works:**
+//!
+//! The [dunce](https://crates.io/crates/dunce) crate intelligently simplifies Windows UNC paths
+//! (`\\?\C:\foo` → `C:\foo`) **only when safe**:
+//! - Automatically keeps UNC for paths >260 chars
+//! - Automatically keeps UNC for reserved names (CON, PRN, NUL, COM1-9, LPT1-9)
+//! - Automatically keeps UNC for paths with trailing spaces/dots
+//! - Automatically keeps UNC for paths containing `..` (literal interpretation)
+//!
+//! All security validations remain unchanged - only the final output format is simplified when
+//! possible. On Unix systems, the feature has no effect.
+//!
 //! ## Cross-Platform Notes
 //!
 //! - Windows: returns extended-length verbatim paths for absolute results (`\\?\C:\…`, `\\?\UNC\…`)
+//!   - With `dunce` feature: returns simplified paths (`C:\…`) when safe
 //! - Unix-like systems: standard absolute and relative path semantics
 //! - UNC floors and device namespaces are preserved and respected
 //!
 //! ## Testing
 //!
-//! 366 tests including:
+//! 409 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
@@ -156,8 +228,15 @@ use crate::windows::{
     validate_windows_ads_layout,
 };
 
+use std::io;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
+
+// When dunce feature is enabled, use dunce::canonicalize which simplifies paths
+// Otherwise use std::fs::canonicalize
+#[cfg(feature = "dunce")]
+use dunce::canonicalize as fs_canonicalize;
+#[cfg(not(feature = "dunce"))]
+use std::fs::canonicalize as fs_canonicalize;
 
 #[inline]
 fn path_contains_nul(p: &Path) -> bool {
@@ -194,6 +273,18 @@ fn reject_nul_bytes(p: &Path) -> io::Result<()> {
 ///
 /// This provides canonicalization benefits (symlink resolution, path normalization)
 /// without requiring the entire path to exist.
+///
+/// # Output Format
+///
+/// **Without `dunce` feature (default):**
+/// - Windows: Returns extended-length UNC paths (`\\?\C:\foo`) for maximum robustness
+/// - Unix: Returns standard absolute paths (`/foo`)
+///
+/// **With `dunce` feature enabled:**
+/// - Windows: Returns simplified paths (`C:\foo`) when safe to do so
+/// - Unix: Returns standard absolute paths (`/foo`) - no change
+///
+/// See the [module documentation](crate#optional-features) for details on the `dunce` feature.
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 
@@ -230,7 +321,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     validate_windows_ads_layout(&absolute_path)?;
 
     // Stage 1.5: fast-path — attempt std canonicalize on the ORIGINAL absolute path first.
-    match fs::canonicalize(&absolute_path) {
+    match fs_canonicalize(&absolute_path) {
         Ok(p) => return Ok(p),
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => { /* continue to boundary detection */ }
@@ -248,7 +339,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 
     // Stage 3: fast-path — try fs::canonicalize on the lexically-normalized path as well
     if normalized_path != absolute_path {
-        match fs::canonicalize(&normalized_path) {
+        match fs_canonicalize(&normalized_path) {
             Ok(p) => return Ok(p),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => { /* fall through to optimized boundary detection */ }
@@ -298,7 +389,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
             }
         }
         if anchor.exists() {
-            if let Ok(canon_anchor) = fs::canonicalize(anchor) {
+            if let Ok(canon_anchor) = fs_canonicalize(anchor) {
                 // Rebuild base as: canonicalized anchor + relative suffix
                 let suffix = base.strip_prefix(anchor).ok();
                 let mut rebuilt = canon_anchor;
@@ -314,7 +405,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     #[cfg(windows)]
     {
         if !symlink_seen && existing_count > 0 && has_windows_short_component(&base) {
-            if let Ok(canon_base) = fs::canonicalize(&base) {
+            if let Ok(canon_base) = fs_canonicalize(&base) {
                 base = canon_base;
             }
         }
@@ -336,9 +427,28 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     }
 
     // After we have a fully-resolved base, normalize lexically.
+    // Note: When dunce feature is enabled AND path is verbatim, skip normalization
+    // so dunce can see the raw structure and make correct safety decisions
     #[cfg(windows)]
     {
-        result = simple_normalize_path(&result);
+        #[cfg(feature = "dunce")]
+        {
+            use std::path::{Component, Prefix};
+            let should_normalize = !matches!(
+                result.components().next(),
+                Some(Component::Prefix(p)) if matches!(
+                    p.kind(),
+                    Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _)
+                )
+            );
+            if should_normalize {
+                result = simple_normalize_path(&result);
+            }
+        }
+        #[cfg(not(feature = "dunce"))]
+        {
+            result = simple_normalize_path(&result);
+        }
     }
     #[cfg(not(windows))]
     {
@@ -347,7 +457,8 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     }
 
-    // Stage 8 (Windows): ensure extended-length prefix for absolute paths when we didn't canonicalize
+    // Stage 8 (Windows): ensure extended-length prefix for absolute paths
+    // We always add \\?\ for robustness, then let dunce decide whether to strip it (if enabled)
     #[cfg(windows)]
     {
         use std::path::{Component, Prefix};
@@ -361,6 +472,14 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
                 Prefix::DeviceNS(_) => { /* leave as-is */ }
             }
         }
+    }
+
+    // Stage 9 (Optional): dunce feature - simplify paths to legacy format when safe
+    // dunce::simplified() intelligently strips \\?\ only when safe (no reserved names,
+    // path length ok, no .., etc.). It performs no I/O and handles non-existing paths correctly.
+    #[cfg(feature = "dunce")]
+    {
+        result = dunce::simplified(&result).to_path_buf();
     }
 
     Ok(result)
@@ -418,6 +537,13 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 /// - **Applications needing anchor-relative interpretation**: Consistent path resolution
 ///   relative to a base directory while preserving symlink semantics
 /// - **Path sandboxing**: Building higher-level path processing APIs with controlled resolution scope
+///
+/// ## Output Format
+///
+/// The output format follows the same rules as [`soft_canonicalize`]:
+/// - **Without `dunce` feature (default)**: Windows returns extended-length UNC paths (`\\?\C:\foo`)
+/// - **With `dunce` feature enabled**: Windows returns simplified paths (`C:\foo`) when safe
+/// - Unix systems always return standard absolute paths
 ///
 /// ## Notes
 /// - The `anchor` is canonicalized (soft) first; the result is absolute
@@ -528,7 +654,7 @@ pub fn anchored_canonicalize(
                 base.push(seg);
 
                 // Resolve symlink chain at `base` using anchor-aware resolver
-                if let Ok(meta) = fs::symlink_metadata(&base) {
+                if let Ok(meta) = std::fs::symlink_metadata(&base) {
                     if meta.file_type().is_symlink() {
                         // Use anchored symlink resolver that implements virtual filesystem semantics
                         let resolved =
@@ -586,6 +712,7 @@ pub fn anchored_canonicalize(
     validate_windows_ads_layout(&base)?;
 
     // Ensure Windows extended-length normalization for absolute results
+    // We always add \\?\ for robustness, then let dunce decide whether to strip it (if enabled)
     #[cfg(windows)]
     {
         use std::path::{Component, Prefix};
@@ -600,11 +727,22 @@ pub fn anchored_canonicalize(
         }
     }
 
+    // Optional: dunce feature - simplify UNC paths to legacy format when safe
+    // dunce::simplified() intelligently strips \\?\ only when safe (no reserved names,
+    // path length ok, no .., etc.). It performs no I/O and handles non-existing paths correctly.
+    #[cfg(feature = "dunce")]
+    {
+        base = dunce::simplified(&base).to_path_buf();
+    }
+
     Ok(base)
 }
 
 #[cfg(test)]
 mod tests {
+    // Test utilities for feature-conditional assertions
+    mod test_utils;
+
     #[cfg(feature = "anchored")]
     mod anchored_canonicalize;
     #[cfg(feature = "anchored")]
@@ -618,6 +756,7 @@ mod tests {
     mod edge_case_robustness;
     mod edge_cases;
     mod exotic_edge_cases;
+    mod format_verification;
     mod optimization;
     mod path_traversal;
     mod platform_specific;
@@ -631,4 +770,8 @@ mod tests {
     mod symlink_dotdot_symlink_first;
     #[cfg(windows)]
     mod windows_path_stripping;
+
+    // dunce feature test suite (expected to fail until feature is implemented)
+    #[cfg(feature = "dunce")]
+    mod dunce_feature;
 }

@@ -14,7 +14,8 @@ readme = "README.md"
 rust-version = "1.70.0"
 
 [dependencies]
-# Zero dependencies - pure std library implementation
+# Optional dunce dependency for path simplification
+dunce = { version = "1.0", optional = true }
 
 [dev-dependencies]
 # MSRV guard: tempfile >=3.22 pulls windows-sys 0.61+ requiring rustc >=1.71.
@@ -25,6 +26,10 @@ tempfile = "=3.21" # Do not update
 default = []
 # Opt-in API for anchored canonicalization semantics. No extra deps.
 anchored = []
+# Opt-in dunce behavior: simplify Windows UNC paths (\\?\C:\foo) to legacy format (C:\foo) when safe.
+# This enables compatibility with legacy programs while maintaining non-existing path support.
+# Adds dunce crate as dependency.
+dunce = ["dep:dunce"]
 
 [[example]]
 name = "basic_usage"

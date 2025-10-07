@@ -6,6 +6,7 @@ use std::path::PathBuf;
 /// - Input: any Path (absolute/relative)
 /// - Output: a PathBuf where `.` is removed and `..` pops one component when possible
 /// - Root semantics are preserved (never pops past root)
+#[inline]
 pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
     #[cfg(windows)]
     {

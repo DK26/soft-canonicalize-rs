@@ -140,20 +140,52 @@ mod windows_direct_8_3_test {
         let std_result = fs::canonicalize(&short_file)?;
         println!("std::fs::canonicalize: {}", std_result.display());
 
-        // CRITICAL TEST: They must match for existing paths
-        assert_eq!(
-            our_result,
-            std_result,
-            "\n❌ FAILURE: Results don't match!\n\
-             This indicates 8.3 short name expansion is broken!\n\
-             soft_canonicalize:  {}\n\
-             std::fs::canonicalize: {}",
-            our_result.display(),
-            std_result.display()
-        );
+        // CRITICAL TEST: Format depends on dunce feature
+        #[cfg(not(feature = "dunce"))]
+        {
+            // WITHOUT dunce: EXACT match with std::fs::canonicalize (UNC format)
+            assert_eq!(
+                our_result,
+                std_result,
+                "\n❌ FAILURE: Results don't match!\n\
+                 This indicates 8.3 short name expansion is broken!\n\
+                 soft_canonicalize:  {}\n\
+                 std::fs::canonicalize: {}",
+                our_result.display(),
+                std_result.display()
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // WITH dunce: Verify simplified format but semantic equivalence
+            let our_str = our_result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+
+            assert!(
+                !our_str.starts_with(r"\\?\"),
+                "dunce should simplify the path (no \\\\?\\ prefix)"
+            );
+            assert!(
+                std_str.starts_with(r"\\?\"),
+                "std should use extended-length format"
+            );
+
+            // Strip UNC prefix from std result for semantic comparison
+            let std_simplified = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+            assert_eq!(
+                our_str.as_ref(),
+                std_simplified,
+                "\n❌ FAILURE: Semantic path mismatch!\n\
+                 soft_canonicalize:  {}\n\
+                 std (simplified):   {}",
+                our_str,
+                std_simplified
+            );
+        }
 
         println!("\n✅ SUCCESS: 8.3 short names are properly expanded!");
-        println!("   soft_canonicalize matches std::fs::canonicalize");
+        println!("   soft_canonicalize matches expected format");
 
         Ok(())
     }
@@ -199,15 +231,40 @@ mod windows_direct_8_3_test {
             std_result.display()
         );
 
-        // The result should start with the canonicalized directory
-        assert!(
-            our_result.starts_with(&std_result),
-            "\n❌ FAILURE: Result doesn't start with canonicalized directory!\n\
-             soft_canonicalize:  {}\n\
-             Expected to start with: {}",
-            our_result.display(),
-            std_result.display()
-        );
+        // Format comparison depends on dunce feature
+        #[cfg(not(feature = "dunce"))]
+        {
+            // WITHOUT dunce: Result should start with UNC-formatted std result
+            assert!(
+                our_result.starts_with(&std_result),
+                "\n❌ FAILURE: Result doesn't start with canonicalized directory!\n\
+                 soft_canonicalize:  {}\n\
+                 Expected to start with: {}",
+                our_result.display(),
+                std_result.display()
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // WITH dunce: Need semantic comparison (strip UNC prefixes)
+            let our_str = our_result.to_string_lossy();
+            let std_path = std_result;
+            let std_str = std_path.to_string_lossy();
+
+            // Strip UNC prefix for comparison
+            let our_clean = our_str.strip_prefix(r"\\?\").unwrap_or(&our_str);
+            let std_clean = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+
+            assert!(
+                our_clean.starts_with(std_clean),
+                "\n❌ FAILURE: Semantic path mismatch!\n\
+                 soft_canonicalize:  {}\n\
+                 Expected to start with: {}",
+                our_clean,
+                std_clean
+            );
+        }
 
         println!("✅ SUCCESS: Existing 8.3 portion expanded, non-existing suffix appended");
 
@@ -267,16 +324,49 @@ mod windows_direct_8_3_test {
         let std_result = fs::canonicalize(&short_path)?;
         println!("std::fs::canonicalize: {}", std_result.display());
 
-        // MUST match
-        assert_eq!(
-            our_result,
-            std_result,
-            "\n❌ FAILURE: Nested 8.3 paths don't match!\n\
-             soft_canonicalize:  {}\n\
-             std::fs::canonicalize: {}",
-            our_result.display(),
-            std_result.display()
-        );
+        // Format comparison depends on dunce feature
+        #[cfg(not(feature = "dunce"))]
+        {
+            // WITHOUT dunce: EXACT match with std (UNC format)
+            assert_eq!(
+                our_result,
+                std_result,
+                "\n❌ FAILURE: Nested 8.3 paths don't match!\n\
+                 soft_canonicalize:  {}\n\
+                 std::fs::canonicalize: {}",
+                our_result.display(),
+                std_result.display()
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // WITH dunce: Verify simplified format but semantic equivalence
+            let our_str = our_result.to_string_lossy();
+            let std_path = std_result;
+            let std_str = std_path.to_string_lossy();
+
+            assert!(
+                !our_str.starts_with(r"\\?\"),
+                "dunce should simplify the path"
+            );
+            assert!(
+                std_str.starts_with(r"\\?\"),
+                "std should use extended-length format"
+            );
+
+            // Strip UNC prefix for semantic comparison
+            let std_simplified = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+            assert_eq!(
+                our_str.as_ref(),
+                std_simplified,
+                "\n❌ FAILURE: Semantic path mismatch!\n\
+                 soft_canonicalize:  {}\n\
+                 std (simplified):   {}",
+                our_str,
+                std_simplified
+            );
+        }
 
         println!("✅ SUCCESS: Nested 8.3 short names properly expanded!");
 

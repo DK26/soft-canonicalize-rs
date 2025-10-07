@@ -2,6 +2,10 @@
 //!
 //! These tests ensure that soft_canonicalize behaves compatibly with std::fs::canonicalize
 //! for existing paths, but handles non-existing paths gracefully.
+//!
+//! Feature-conditional testing:
+//! - WITHOUT dunce: Verifies EXACT UNC format match with std::fs::canonicalize
+//! - WITH dunce: Verifies simplified format (no \\?\ prefix when safe)
 
 use soft_canonicalize::soft_canonicalize;
 use std::fs::{self, File};
@@ -56,32 +60,101 @@ fn soft_canonicalize_works_simple() {
     let file = tmpdir.join("test");
     File::create(&file).unwrap();
 
-    // For existing files, soft_canonicalize should match std::fs::canonicalize
     let soft_result = soft_canonicalize(&file).unwrap();
     let std_result = fs::canonicalize(&file).unwrap();
-    assert_eq!(soft_result, std_result);
 
-    // Also test with the canonical tmpdir
-    assert_eq!(soft_canonicalize(&file).unwrap(), file);
+    // WITHOUT dunce: EXACT format match with std::fs::canonicalize (UNC on Windows)
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(
+            soft_result, std_result,
+            "Without dunce: must match std EXACTLY"
+        );
+        assert_eq!(soft_canonicalize(&file).unwrap(), file);
+    }
+
+    // WITH dunce: Simplified format (no \\?\ prefix when safe on Windows)
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let soft_str = soft_result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+
+            // std returns \\?\C:\... but dunce simplifies to C:\...
+            assert!(std_str.starts_with(r"\\?\"), "std should return UNC format");
+            assert!(
+                !soft_str.starts_with(r"\\?\"),
+                "dunce should simplify safe paths"
+            );
+
+            // Verify semantic equivalence
+            let soft_stripped = soft_str.strip_prefix(r"\\?\").unwrap_or(&soft_str);
+            let std_stripped = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+            assert_eq!(
+                soft_stripped, std_stripped,
+                "Paths should be semantically equal"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            // On Unix, dunce doesn't change behavior
+            assert_eq!(soft_result, std_result);
+        }
+    }
 }
 
 /// Test soft_canonicalize with non-existing files (the key difference from std)
 #[test]
 fn soft_canonicalize_nonexisting() {
     let tmpdir = tmpdir();
+    #[cfg(not(feature = "dunce"))]
     let tmpdir_canonical = fs::canonicalize(tmpdir.path()).unwrap();
 
     // Non-existing file in existing directory
     let nonexisting = tmpdir.path().join("does_not_exist.txt");
     let result = soft_canonicalize(&nonexisting).unwrap();
-    let expected = tmpdir_canonical.join("does_not_exist.txt");
-    assert_eq!(result, expected);
+
+    // WITHOUT dunce: UNC format
+    #[cfg(not(feature = "dunce"))]
+    {
+        let expected = tmpdir_canonical.join("does_not_exist.txt");
+        assert_eq!(result, expected, "Without dunce: exact UNC format");
+    }
+
+    // WITH dunce: Simplified format
+    #[cfg(feature = "dunce")]
+    {
+        let result_str = result.to_string_lossy();
+        assert!(
+            !result_str.starts_with(r"\\?\"),
+            "dunce should simplify non-existing paths"
+        );
+        // Verify path ends correctly
+        assert!(result_str.ends_with("does_not_exist.txt"));
+    }
 
     // Non-existing directory
     let nonexisting_dir = tmpdir.path().join("missing_dir").join("file.txt");
-    let result = soft_canonicalize(&nonexisting_dir).unwrap();
-    let expected = tmpdir_canonical.join("missing_dir").join("file.txt");
-    assert_eq!(result, expected);
+    let result2 = soft_canonicalize(&nonexisting_dir).unwrap();
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        let expected2 = tmpdir_canonical.join("missing_dir").join("file.txt");
+        assert_eq!(result2, expected2, "Without dunce: exact UNC format");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        let result2_str = result2.to_string_lossy();
+        assert!(!result2_str.starts_with(r"\\?\"), "dunce should simplify");
+
+        #[cfg(windows)]
+        assert!(result2_str.ends_with(r"missing_dir\file.txt"));
+
+        #[cfg(not(windows))]
+        assert!(result2_str.ends_with("missing_dir/file.txt"));
+    }
 
     // Std canonicalize should fail for these
     assert!(fs::canonicalize(&nonexisting).is_err());
@@ -110,19 +183,79 @@ fn soft_realpath_works() {
     assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
 
     // Test that soft_canonicalize resolves symlinks like std::fs::canonicalize
-    assert_eq!(soft_canonicalize(&tmpdir).unwrap(), tmpdir);
-    assert_eq!(
-        soft_canonicalize(&file).unwrap(),
-        fs::canonicalize(&file).unwrap()
-    );
-    assert_eq!(
-        soft_canonicalize(&link).unwrap(),
-        fs::canonicalize(&link).unwrap()
-    );
-    assert_eq!(
-        soft_canonicalize(&linkdir).unwrap(),
-        fs::canonicalize(&linkdir).unwrap()
-    );
+
+    // WITHOUT dunce: EXACT match with std
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(soft_canonicalize(&tmpdir).unwrap(), tmpdir);
+        assert_eq!(
+            soft_canonicalize(&file).unwrap(),
+            fs::canonicalize(&file).unwrap()
+        );
+        assert_eq!(
+            soft_canonicalize(&link).unwrap(),
+            fs::canonicalize(&link).unwrap()
+        );
+        assert_eq!(
+            soft_canonicalize(&linkdir).unwrap(),
+            fs::canonicalize(&linkdir).unwrap()
+        );
+    }
+
+    // WITH dunce: Verify simplified format but semantic equivalence
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let soft_tmpdir = soft_canonicalize(&tmpdir).unwrap();
+            let soft_tmpdir_str = soft_tmpdir.to_string_lossy();
+            assert!(
+                !soft_tmpdir_str.starts_with(r"\\?\"),
+                "dunce should simplify tmpdir"
+            );
+
+            let soft_file = soft_canonicalize(&file).unwrap();
+            let std_file = fs::canonicalize(&file).unwrap();
+            assert!(
+                !soft_file.to_string_lossy().starts_with(r"\\?\"),
+                "dunce should simplify file"
+            );
+            assert!(
+                std_file.to_string_lossy().starts_with(r"\\?\"),
+                "std returns UNC"
+            );
+
+            let soft_link = soft_canonicalize(&link).unwrap();
+            let std_link = fs::canonicalize(&link).unwrap();
+            assert!(
+                !soft_link.to_string_lossy().starts_with(r"\\?\"),
+                "dunce should simplify link"
+            );
+            assert!(
+                std_link.to_string_lossy().starts_with(r"\\?\"),
+                "std returns UNC"
+            );
+
+            let soft_linkdir = soft_canonicalize(&linkdir).unwrap();
+            let std_linkdir = fs::canonicalize(&linkdir).unwrap();
+            assert!(
+                !soft_linkdir.to_string_lossy().starts_with(r"\\?\"),
+                "dunce should simplify linkdir"
+            );
+            assert!(
+                std_linkdir.to_string_lossy().starts_with(r"\\?\"),
+                "std returns UNC"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            // On Unix, just verify the operations work
+            let _ = soft_canonicalize(&tmpdir).unwrap();
+            let _ = soft_canonicalize(&file).unwrap();
+            let _ = soft_canonicalize(&link).unwrap();
+            let _ = soft_canonicalize(&linkdir).unwrap();
+        }
+    }
 
     // But also test with broken symlinks (pointing to non-existing files)
     let broken_link = tmpdir.join("broken_link");
@@ -169,20 +302,50 @@ fn soft_realpath_works_tricky() {
     }
 
     // Both should resolve to f
-    assert_eq!(
-        soft_canonicalize(&c).unwrap(),
-        fs::canonicalize(&c).unwrap()
-    );
-    assert_eq!(
-        soft_canonicalize(&c).unwrap(),
-        fs::canonicalize(&f).unwrap()
-    );
+    let soft_c = soft_canonicalize(&c).unwrap();
+    let std_c = fs::canonicalize(&c).unwrap();
+    let std_f = fs::canonicalize(&f).unwrap();
+
+    // WITHOUT dunce: EXACT match
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(soft_c, std_c);
+        assert_eq!(soft_c, std_f);
+    }
+
+    // WITH dunce: Verify simplified but semantically equal
+    #[cfg(feature = "dunce")]
+    {
+        let soft_c_str = soft_c.to_string_lossy();
+
+        assert!(
+            !soft_c_str.starts_with(r"\\?\"),
+            "dunce should simplify symlink"
+        );
+
+        // Windows-specific UNC format checks
+        #[cfg(windows)]
+        {
+            let std_c_str = std_c.to_string_lossy();
+            let std_f_str = std_f.to_string_lossy();
+            assert!(std_c_str.starts_with(r"\\?\"), "std returns UNC");
+            assert!(std_f_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+
+        // Unix: No UNC paths, verify equality
+        #[cfg(not(windows))]
+        {
+            assert_eq!(soft_c, std_c);
+            assert_eq!(soft_c, std_f);
+        }
+    }
 }
 
 /// Test dot and dotdot handling
 #[test]
 fn soft_canonicalize_dots() {
     let tmpdir = tmpdir();
+    #[cfg(not(feature = "dunce"))]
     let tmpdir_canonical = fs::canonicalize(tmpdir.path()).unwrap();
 
     // Create nested directory structure
@@ -217,20 +380,70 @@ fn soft_canonicalize_dots() {
     for (input, expected) in cases {
         let soft_result = soft_canonicalize(&input).unwrap();
         let std_result = fs::canonicalize(&expected).unwrap();
-        assert_eq!(soft_result, std_result, "Failed for input: {input:?}");
+
+        // WITHOUT dunce: EXACT match
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(soft_result, std_result, "Failed for input: {input:?}");
+        }
+
+        // WITH dunce: Verify simplified but semantically equal
+        #[cfg(feature = "dunce")]
+        {
+            let soft_str = soft_result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(
+                !soft_str.starts_with(r"\\?\"),
+                "dunce should simplify for input: {input:?}"
+            );
+
+            // Windows-specific UNC format check
+            #[cfg(windows)]
+            {
+                assert!(
+                    std_str.starts_with(r"\\?\"),
+                    "std returns UNC for input: {input:?}"
+                );
+            }
+
+            // Semantic equality check
+            let soft_stripped = soft_str.strip_prefix(r"\\?\").unwrap_or(&soft_str);
+            let std_stripped = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+            assert_eq!(soft_stripped, std_stripped, "Failed for input: {input:?}");
+        }
     }
 
     // Test with non-existing components
     let nonexisting_with_dots = a.join("b").join("..").join("c").join("test.txt");
     let result = soft_canonicalize(nonexisting_with_dots).unwrap();
-    let expected = tmpdir_canonical.join("a").join("c").join("test.txt");
-    assert_eq!(result, expected);
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        let expected = tmpdir_canonical.join("a").join("c").join("test.txt");
+        assert_eq!(result, expected);
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        let result_str = result.to_string_lossy();
+        assert!(
+            !result_str.starts_with(r"\\?\"),
+            "dunce should simplify non-existing"
+        );
+
+        #[cfg(windows)]
+        assert!(result_str.ends_with(r"a\c\test.txt"));
+
+        #[cfg(not(windows))]
+        assert!(result_str.ends_with("a/c/test.txt"));
+    }
 }
 
 /// Test absolute vs relative paths
 #[test]
 fn soft_canonicalize_absolute_relative() {
     let tmpdir = tmpdir();
+    #[cfg(not(feature = "dunce"))]
     let tmpdir_canonical = fs::canonicalize(tmpdir.path()).unwrap();
 
     // Create test structure
@@ -245,12 +458,54 @@ fn soft_canonicalize_absolute_relative() {
 
     let relative_result = soft_canonicalize(Path::new("subdir/test.txt")).unwrap();
     assert!(relative_result.is_absolute());
-    assert_eq!(relative_result, fs::canonicalize(&file).unwrap());
+
+    // WITHOUT dunce: EXACT match
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(relative_result, fs::canonicalize(&file).unwrap());
+    }
+
+    // WITH dunce: Simplified format
+    #[cfg(feature = "dunce")]
+    {
+        let soft_str = relative_result.to_string_lossy();
+        let std_path = fs::canonicalize(&file).unwrap();
+        assert!(!soft_str.starts_with(r"\\?\"), "dunce should simplify");
+
+        // Windows-specific UNC format check
+        #[cfg(windows)]
+        {
+            let std_str = std_path.to_string_lossy();
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+
+        // Unix: Verify basic equality
+        #[cfg(not(windows))]
+        {
+            assert_eq!(relative_result, std_path);
+        }
+    }
 
     // Test relative non-existing path
     let relative_nonexisting = soft_canonicalize(Path::new("subdir/nonexisting.txt")).unwrap();
-    let expected = tmpdir_canonical.join("subdir").join("nonexisting.txt");
-    assert_eq!(relative_nonexisting, expected);
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        let expected = tmpdir_canonical.join("subdir").join("nonexisting.txt");
+        assert_eq!(relative_nonexisting, expected);
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        let result_str = relative_nonexisting.to_string_lossy();
+        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+
+        #[cfg(windows)]
+        assert!(result_str.ends_with(r"subdir\nonexisting.txt"));
+
+        #[cfg(not(windows))]
+        assert!(result_str.ends_with("subdir/nonexisting.txt"));
+    }
 
     std::env::set_current_dir(original_cwd).unwrap();
 }
@@ -277,9 +532,19 @@ fn soft_canonicalize_edge_cases() {
 
     #[cfg(windows)]
     {
-        // Test Windows drive root - std::fs::canonicalize returns UNC format
         let c_root = soft_canonicalize(Path::new("C:\\")).unwrap();
-        assert_eq!(c_root, PathBuf::from("\\\\?\\C:\\"));
+
+        // WITHOUT dunce: UNC format
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(c_root, PathBuf::from("\\\\?\\C:\\"));
+        }
+
+        // WITH dunce: Simplified format
+        #[cfg(feature = "dunce")]
+        {
+            assert_eq!(c_root, PathBuf::from("C:\\"));
+        }
     }
 }
 
@@ -334,7 +599,38 @@ fn soft_canonicalize_unicode() {
 
     // Test existing Unicode path
     let result = soft_canonicalize(&unicode_file).unwrap();
-    assert_eq!(result, fs::canonicalize(&unicode_file).unwrap());
+
+    // WITHOUT dunce: EXACT match
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, fs::canonicalize(&unicode_file).unwrap());
+    }
+
+    // WITH dunce: Simplified format
+    #[cfg(feature = "dunce")]
+    {
+        let soft_str = result.to_string_lossy();
+        let std_path = fs::canonicalize(&unicode_file).unwrap();
+        assert!(
+            !soft_str.starts_with(r"\\?\"),
+            "dunce should simplify Unicode"
+        );
+
+        // Windows-specific UNC format check
+        #[cfg(windows)]
+        {
+            let std_str = std_path.to_string_lossy();
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+
+        // Unix: Verify basic equality
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, std_path);
+        }
+
+        assert!(soft_str.contains("файл.txt"));
+    }
 
     // Test non-existing Unicode path
     let nonexisting_unicode = unicode_dir.join("не_существует.txt");
@@ -361,9 +657,42 @@ fn soft_canonicalize_compatibility() {
     for path in test_paths {
         let soft_result = soft_canonicalize(path).unwrap();
         let std_result = fs::canonicalize(path).unwrap();
-        assert_eq!(
-            soft_result, std_result,
-            "Mismatch for existing path: {path:?}"
-        );
+
+        // WITHOUT dunce: EXACT format match
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                soft_result, std_result,
+                "Mismatch for existing path: {path:?}"
+            );
+        }
+
+        // WITH dunce: Verify simplified but semantically equal
+        #[cfg(feature = "dunce")]
+        {
+            let soft_str = soft_result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(
+                !soft_str.starts_with(r"\\?\"),
+                "dunce should simplify for path: {path:?}"
+            );
+
+            // Windows-specific UNC format check
+            #[cfg(windows)]
+            {
+                assert!(
+                    std_str.starts_with(r"\\?\"),
+                    "std returns UNC for path: {path:?}"
+                );
+            }
+
+            // Semantic equality
+            let soft_stripped = soft_str.strip_prefix(r"\\?\").unwrap_or(&soft_str);
+            let std_stripped = std_str.strip_prefix(r"\\?\").unwrap_or(&std_str);
+            assert_eq!(
+                soft_stripped, std_stripped,
+                "Semantic mismatch for path: {path:?}"
+            );
+        }
     }
 }

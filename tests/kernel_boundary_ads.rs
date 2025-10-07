@@ -52,9 +52,18 @@ fn test_syscall_bypass() -> io::Result<()> {
         match soft_canonicalize(&path) {
             Ok(canonical) => {
                 let temp_canonical = soft_canonicalize(tmp.path())?;
+                // Use semantic comparison: strip UNC prefixes for comparison if present
+                let canonical_str = canonical.to_string_lossy();
+                let temp_str = temp_canonical.to_string_lossy();
+
+                let canonical_stripped = canonical_str
+                    .strip_prefix(r"\\?\")
+                    .unwrap_or(&canonical_str);
+                let temp_stripped = temp_str.strip_prefix(r"\\?\").unwrap_or(&temp_str);
+
                 assert!(
-                    canonical.starts_with(&temp_canonical),
-                    "Pattern '{pattern}' should stay within temp directory bounds"
+                    canonical_stripped.starts_with(temp_stripped),
+                    "Pattern '{pattern}' should stay within temp directory bounds. Got: {canonical_str}, Expected prefix: {temp_str}"
                 );
             }
             Err(_) => {

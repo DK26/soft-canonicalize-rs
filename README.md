@@ -17,12 +17,12 @@ This crate extends standard path canonicalization to support non-existing paths.
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.4x (7,985 paths/s), Linux ~1.7x (235,361 paths/s) faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.3x (9,907 paths/s), Linux ~1.9x (238,038 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 366 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 409 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
-**🔧 Zero dependencies** - Only uses std library
+**🔧 Zero dependencies** - Optional features may add dependencies
 
 For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](benches/) directory. Bench numbers vary by hardware, OS, and filesystem; see the bench outputs for per-scenario numbers.
 
@@ -57,39 +57,59 @@ assert_eq!(
 );
 ```
 
-### Anchored Canonicalization
 
-For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function implements true virtual filesystem semantics by clamping ALL paths (including absolute symlink targets) to the anchor directory:
+## Comparison with Alternatives
+
+Each crate serves different use cases. Choose based on your primary need:
+
+| Tool/Crate                       | **Primary Purpose**                               | **Use Cases**                                                                     |
+| -------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `soft_canonicalize`              | **Path canonicalization + non-existing paths**    | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
+| `soft_canonicalize` (w/ `dunce`) | **Non-existing paths + simplified output**        | Like `dunce::canonicalize`, but works with non-existing paths                     |
+| `realpath()` (libc)              | **Path canonicalization (existing paths only)**   | Unix/POSIX system call for path canonicalization                                  |
+| `std::fs::canonicalize`          | **Path canonicalization (existing paths only)**   | Standard path canonicalization when all paths exist on filesystem                 |
+| `std::path::absolute`            | **Make paths absolute (no canonicalization)**     | Converting to absolute paths without resolving symlinks or normalizing            |
+| `dunce::canonicalize`            | **Windows compatibility layer**                   | Fixing Windows UNC issues for legacy app compatibility                            |
+| `normpath::normalize`            | **Safe normalization alternative**                | Avoiding Windows UNC bugs while normalizing paths                                 |
+| `path_absolutize`                | **CWD-relative path resolution**                  | Converting relative paths to absolute with performance optimization               |
+| `strict-path`                    | **Type-safe path restriction with safe symlinks** | Preventing directory traversal with type-safe path restriction and safe symlinks  |
+
+### Feature Comparison
+
+| Feature                          | `soft_canonicalize`           | `realpath()` (libc) | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `strict-path`       |
+| -------------------------------- | ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
+| Works with non-existing paths    | ✅                             | ❌                   | ❌                       | ✅                     | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
+| Resolves symlinks                | ✅                             | ✅                   | ✅                       | ❌                     | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
+| Simplified Windows paths         | ✅ (opt-in `dunce` feature)    | N/A (Unix/POSIX)    | ❌ (UNC)                 | ❌ (varies)            | ✅                     | ✅                     | ❌                 | ❌ (UNC)             |
+| Windows UNC path support         | ✅                             | N/A (Unix/POSIX)    | ✅                       | ✅                     | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
+| Zero dependencies                | ✅ (default)                   | N/A (system call)   | ✅                       | ✅                     | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
+| Virtual/bounded canonicalization | ✅ (opt-in `anchored` feature) | ❌                   | ❌                       | ❌                     | ❌                     | ❌                     | ❌                 | ✅ (`VirtualRoot`)   |
+
+## Known Limitations
+
+### Windows Short Filename Equivalence
+
+On Windows, the filesystem may generate short filenames (8.3 format) for long directory names. For **non-existing paths**, this library cannot determine if a short filename form (e.g., `PROGRA~1`) and its corresponding long form (e.g., `Program Files`) refer to the same future location:
 
 ```rust
-use soft_canonicalize::anchored_canonicalize;
-use std::fs;
+use soft_canonicalize::soft_canonicalize;
 
-// Set up an anchor/root directory (no need to pre-canonicalize)
-let anchor = std::env::temp_dir().join("workspace_root");
-fs::create_dir_all(&anchor)?;
+// These non-existing paths are treated as different (correctly)
+let short_form = soft_canonicalize("C:/PROGRA~1/MyApp/config.json")?;
+let long_form = soft_canonicalize("C:/Program Files/MyApp/config.json")?;
 
-// Canonicalize paths relative to the anchor (anchor is soft-canonicalized internally)
-let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
-// Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
-
-// Absolute symlinks are also clamped to the anchor
-// If there's a symlink: workspace_root/config -> /etc/config
-// It resolves to: workspace_root/etc/config (clamped to anchor)
-let symlink_path = anchored_canonicalize(&anchor, "config")?;
-// Safe: always stays within workspace_root, even if symlink points to /etc/config
+// They will NOT be equal because we cannot determine equivalence
+// without filesystem existence
+assert_ne!(short_form, long_form);
 ```
 
-Key features of `anchored_canonicalize`:
-- **Virtual filesystem semantics**: All absolute paths (including symlink targets) are clamped to anchor
-- **Anchor-relative canonicalization**: Resolves paths relative to a specific anchor directory
-- **Complete symlink clamping**: Follows symlink chains with clamping at each step
-- **Component-by-component**: Processes path components in proper order
-- **Absolute results**: Always returns absolute canonical paths within the anchor boundary
+**This is a fundamental limitation** shared by Python's `pathlib.Path.resolve(strict=False)` and other path canonicalization libraries across languages. Short filename mapping only exists when files/directories are actually created by the filesystem.
+
+**For existing paths**, this library correctly resolves short and long forms to the same canonical result, maintaining 100% compatibility with `std::fs::canonicalize`.
 
 ### Test Coverage
 
-**366 comprehensive tests** including:
+**409 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -129,53 +149,82 @@ This is essential for:
 
 The "soft" aspect means we can canonicalize paths even when the target doesn't exist yet - extending traditional canonicalization to work with planned or future file locations.
 
+## Optional Features
 
-## Comparison with Alternatives
+### Anchored Canonicalization (`anchored` feature)
 
-Each crate serves different use cases. Choose based on your primary need:
+For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function implements true virtual filesystem semantics by clamping ALL paths (including absolute symlink targets) to the anchor directory:
 
-| Tool/Crate              | **Primary Purpose**                               | **Use Cases**                                                                     |
-| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `soft_canonicalize`     | **Path canonicalization + non-existing paths**    | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
-| `realpath()` (libc)     | **Path canonicalization (existing paths only)**   | Unix/POSIX system call for path canonicalization                                  |
-| `std::fs::canonicalize` | **Path canonicalization (existing paths only)**   | Standard path canonicalization when all paths exist on filesystem                 |
-| `std::path::absolute`   | **Make paths absolute (no canonicalization)**     | Converting to absolute paths without resolving symlinks or normalizing            |
-| `dunce::canonicalize`   | **Windows compatibility layer**                   | Fixing Windows UNC issues for legacy app compatibility                            |
-| `normpath::normalize`   | **Safe normalization alternative**                | Avoiding Windows UNC bugs while normalizing paths                                 |
-| `path_absolutize`       | **CWD-relative path resolution**                  | Converting relative paths to absolute with performance optimization               |
-| `strict-path`           | **Type-safe path restriction with safe symlinks** | Preventing directory traversal with type-safe path restriction and safe symlinks  |
+```toml
+[dependencies]
+soft-canonicalize = { version = "0.4", features = ["anchored"] }
+```
 
-### Feature Comparison
+```rust
+use soft_canonicalize::anchored_canonicalize;
+use std::fs;
 
-| Feature                          | `soft_canonicalize`         | `realpath()` (libc) | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `strict-path`       |
-| -------------------------------- | --------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
-| Works with non-existing paths    | ✅                           | ❌                   | ❌                       | ✅                     | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
-| Resolves symlinks                | ✅                           | ✅                   | ✅                       | ❌                     | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
-| Windows UNC path support         | ✅                           | N/A (Unix/POSIX)    | ✅                       | ✅                     | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
-| Zero dependencies                | ✅                           | N/A (system call)   | ✅                       | ✅                     | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                   | ❌                       | ❌                     | ❌                     | ❌                     | ❌                 | ✅ (`VirtualRoot`)   |
+// Set up an anchor/root directory (no need to pre-canonicalize)
+let anchor = std::env::temp_dir().join("workspace_root");
+fs::create_dir_all(&anchor)?;
 
-## Known Limitations
+// Canonicalize paths relative to the anchor (anchor is soft-canonicalized internally)
+let resolved_path = anchored_canonicalize(&anchor, "../../../etc/passwd")?;
+// Result: /tmp/workspace_root/etc/passwd (lexical .. clamped to anchor)
 
-### Windows Short Filename Equivalence
+// Absolute symlinks are also clamped to the anchor
+// If there's a symlink: workspace_root/config -> /etc/config
+// It resolves to: workspace_root/etc/config (clamped to anchor)
+let symlink_path = anchored_canonicalize(&anchor, "config")?;
+// Safe: always stays within workspace_root, even if symlink points to /etc/config
+```
 
-On Windows, the filesystem may generate short filenames (8.3 format) for long directory names. For **non-existing paths**, this library cannot determine if a short filename form (e.g., `PROGRA~1`) and its corresponding long form (e.g., `Program Files`) refer to the same future location:
+Key features of `anchored_canonicalize`:
+- **Virtual filesystem semantics**: All absolute paths (including symlink targets) are clamped to anchor
+- **Anchor-relative canonicalization**: Resolves paths relative to a specific anchor directory
+- **Complete symlink clamping**: Follows symlink chains with clamping at each step
+- **Component-by-component**: Processes path components in proper order
+- **Absolute results**: Always returns absolute canonical paths within the anchor boundary
+
+### Simplified Path Output (`dunce` feature)
+
+By default, `soft_canonicalize` returns Windows paths in extended-length UNC format (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names, and other Windows filesystem edge cases.
+
+If you need simplified paths (`C:\foo`) for compatibility with legacy applications or user-facing output, enable the **`dunce` feature**:
+
+```toml
+[dependencies]
+soft-canonicalize = { version = "0.4", features = ["dunce"] }
+```
+
+**Example:**
 
 ```rust
 use soft_canonicalize::soft_canonicalize;
 
-// These non-existing paths are treated as different (correctly)
-let short_form = soft_canonicalize("C:/PROGRA~1/MyApp/config.json")?;
-let long_form = soft_canonicalize("C:/Program Files/MyApp/config.json")?;
+let path = soft_canonicalize(r"C:\Users\user\documents\..\config.json")?;
 
-// They will NOT be equal because we cannot determine equivalence
-// without filesystem existence
-assert_ne!(short_form, long_form);
+// Without dunce feature (default):
+// Returns: \\?\C:\Users\user\config.json (extended-length UNC)
+
+// With dunce feature enabled:
+// Returns: C:\Users\user\config.json (simplified when safe)
 ```
 
-**This is a fundamental limitation** shared by Python's `pathlib.Path.resolve(strict=False)` and other path canonicalization libraries across languages. Short filename mapping only exists when files/directories are actually created by the filesystem.
+**When to use:**
+- ✅ Legacy applications that don't support UNC paths
+- ✅ User-facing output requiring familiar path format
+- ✅ Tools expecting traditional Windows path format
 
-**For existing paths**, this library correctly resolves short and long forms to the same canonical result, maintaining 100% compatibility with `std::fs::canonicalize`.
+**How it works:**
+The [dunce](https://crates.io/crates/dunce) crate intelligently simplifies Windows UNC paths (`\\?\C:\foo` → `C:\foo`) **only when safe**:
+- Automatically keeps UNC for paths >260 chars
+- Automatically keeps UNC for reserved names (CON, PRN, NUL, COM1-9, LPT1-9)
+- Automatically keeps UNC for paths with trailing spaces/dots
+- Automatically keeps UNC for paths containing `..` (literal interpretation)
+
+All security validations remain unchanged - only the final output format is simplified when possible. On Unix systems, the feature has no effect.
+
 
 ## Contributing
 

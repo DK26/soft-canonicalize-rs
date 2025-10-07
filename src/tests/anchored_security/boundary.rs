@@ -41,7 +41,41 @@ fn long_tail_and_component_limits_do_not_break() -> std::io::Result<()> {
     let long_component = "a".repeat(255);
     let path = format!("dir/{}/deep/file.txt", long_component);
     let out = anchored_canonicalize(&base, path)?;
-    assert!(out.starts_with(&base));
+
+    // Verify output starts with the base (semantic relationship)
+    #[cfg(windows)]
+    {
+        #[cfg(not(feature = "dunce"))]
+        {
+            // WITHOUT dunce: Both should be in UNC format, direct comparison works
+            assert!(
+                out.starts_with(&base),
+                "Output should start with base (both UNC format)"
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // WITH dunce: Normalize for comparison (both may be simplified or mixed)
+            let out_str = out.to_string_lossy();
+            let base_str = base.to_string_lossy();
+
+            let out_normalized =
+                std::path::PathBuf::from(out_str.strip_prefix(r"\\?\").unwrap_or(&out_str));
+            let base_normalized =
+                std::path::PathBuf::from(base_str.strip_prefix(r"\\?\").unwrap_or(&base_str));
+
+            assert!(
+                out_normalized.starts_with(base_normalized),
+                "Output should start with base (normalized)"
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        assert!(out.starts_with(&base));
+    }
+
     assert!(out.to_string_lossy().contains("file.txt"));
     Ok(())
 }

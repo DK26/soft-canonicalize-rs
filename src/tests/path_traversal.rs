@@ -25,8 +25,28 @@ fn test_relative_path_with_traversal() -> std::io::Result<()> {
     // This should resolve to current_dir/part, cancelling out the non/existing parts
     let result = soft_canonicalize(Path::new("non/existing/../../part"))?;
 
-    // The result should be exactly current_dir/part
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(
+                expected_str.starts_with(r"\\?\"),
+                "expected has UNC from std"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
 
     Ok(())
 }
@@ -49,7 +69,28 @@ fn test_mixed_existing_and_nonexisting_with_traversal() -> std::io::Result<()> {
     let result = soft_canonicalize(test_path)?;
     let expected = fs::canonicalize(&existing_dir)?.join("sibling.txt");
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(
+                expected_str.starts_with(r"\\?\"),
+                "expected has UNC from std"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 

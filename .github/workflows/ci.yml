@@ -149,6 +149,18 @@ jobs:
         echo "Then run: cargo clippy --all-targets --all-features -- -D warnings"
 
     - name: Run tests
+      run: cargo test --verbose
+
+    - name: Test feature matrix
+      run: |
+        echo "Testing feature combinations..."
+        echo "  Testing: anchored only"
+        cargo test --lib --features anchored
+        echo "  Testing: anchored + dunce"
+        cargo test --lib --features anchored,dunce
+        echo "✅ All feature combinations passed!"
+
+    - name: Run all features test
       run: cargo test --all-features --verbose
 
   docs:

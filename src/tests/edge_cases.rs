@@ -56,10 +56,47 @@ fn test_performance_characteristics() -> std::io::Result<()> {
                 let expected = fs::canonicalize(temp_dir.path())?
                     .join(deep_path)
                     .join("file.txt");
-                assert_eq!(
-                    canonical_path, expected,
-                    "Canonicalization result incorrect for depth {depth}"
-                );
+
+                #[cfg(not(feature = "dunce"))]
+                {
+                    assert_eq!(canonical_path, expected, "Without dunce: exact match");
+                }
+
+                #[cfg(feature = "dunce")]
+                {
+                    #[cfg(windows)]
+                    {
+                        let result_str = canonical_path.to_string_lossy();
+                        let expected_str = expected.to_string_lossy();
+
+                        // Deep paths (>260 chars) are NOT safe to simplify, so dunce preserves UNC
+                        // Both should be in UNC format for deep paths
+                        if result_str.len() > 260 || expected_str.len() > 260 {
+                            assert!(
+                                result_str.starts_with(r"\\?\"),
+                                "dunce preserves UNC for long paths"
+                            );
+                            assert!(
+                                expected_str.starts_with(r"\\?\"),
+                                "expected has UNC from std"
+                            );
+                        } else {
+                            // Short paths can be simplified
+                            assert!(
+                                !result_str.starts_with(r"\\?\"),
+                                "dunce simplifies short paths"
+                            );
+                            assert!(
+                                expected_str.starts_with(r"\\?\"),
+                                "expected has UNC from std"
+                            );
+                        }
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        assert_eq!(canonical_path, expected);
+                    }
+                }
             }
             Err(e) => {
                 all_succeeded = false;

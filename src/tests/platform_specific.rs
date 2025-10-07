@@ -44,12 +44,35 @@ fn test_windows_specific_paths() -> std::io::Result<()> {
 fn test_windows_unc_nonexistent_absolute_has_expected_prefix() {
     // Explicitly validate the extended-length prefix formatting for a non-existent absolute path
     let got = soft_canonicalize(r"C:\NonExistent\Path\That\Does\Not\Exist").unwrap();
-    assert_eq!(
-        got,
-        PathBuf::from(r"\\?\C:\\NonExistent\Path\That\Does\Not\Exist")
-    );
-}
 
+    #[cfg(not(feature = "dunce"))]
+    {
+        // WITHOUT dunce: MUST return UNC format (\\?\C:\...)
+        let expected = PathBuf::from(r"\\?\C:\\NonExistent\Path\That\Does\Not\Exist");
+        assert_eq!(
+            got, expected,
+            "Without dunce feature, must return extended-length UNC format"
+        );
+        assert!(
+            got.to_string_lossy().starts_with(r"\\?\"),
+            "Expected UNC prefix \\\\?\\, got: {}",
+            got.display()
+        );
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // WITH dunce: Safe path (no reserved names, <260 chars, no ..) should be simplified
+        let got_str = got.to_string_lossy();
+        assert!(
+            !got_str.starts_with(r"\\?\"),
+            "With dunce feature, safe paths should be simplified (no \\\\?\\), got: {}",
+            got_str
+        );
+        // Verify it ends with the expected path components
+        assert!(got_str.ends_with(r"NonExistent\Path\That\Does\Not\Exist"));
+    }
+}
 #[cfg(windows)]
 #[test]
 fn test_windows_nonexistent_jail_starts_with_consistency() {
@@ -69,15 +92,35 @@ fn test_windows_nonexistent_jail_starts_with_consistency() {
 #[cfg(windows)]
 #[test]
 fn test_windows_extended_prefix_idempotent_for_nonexistent() {
-    // Canonicalizing a verbatim (\\?\) path should be idempotent
+    // Canonicalizing a verbatim (\\?\) path should be idempotent or simplified
     let verbatim = PathBuf::from(r"\\?\C:\\NonExistent\Path\That\Does\Not\Exist");
     let again = soft_canonicalize(&verbatim).expect("canonicalize verbatim");
-    assert_eq!(
-        again, verbatim,
-        "Verbatim path canonicalization must be idempotent"
-    );
-}
 
+    #[cfg(not(feature = "dunce"))]
+    {
+        // WITHOUT dunce: Verbatim path stays verbatim (idempotent)
+        assert_eq!(
+            again, verbatim,
+            "Without dunce, verbatim path canonicalization must be idempotent"
+        );
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // WITH dunce: May simplify safe paths
+        let again_str = again.to_string_lossy();
+        let verbatim_str = verbatim.to_string_lossy();
+
+        let again_normalized = PathBuf::from(again_str.strip_prefix(r"\\?\").unwrap_or(&again_str));
+        let verbatim_normalized =
+            PathBuf::from(verbatim_str.strip_prefix(r"\\?\").unwrap_or(&verbatim_str));
+
+        assert_eq!(
+            again_normalized, verbatim_normalized,
+            "With dunce, normalized paths must be equivalent"
+        );
+    }
+}
 #[cfg(windows)]
 #[test]
 fn test_windows_unc_server_share_nonexistent_starts_with() {
@@ -116,9 +159,44 @@ fn test_windows_unc_root_with_trailing_separator_idempotent() {
     ];
 
     let canonical_base = soft_canonicalize(&base).expect("canonicalize UNC base");
-    for v in variants {
-        let got = soft_canonicalize(&v).expect("canonicalize UNC root variant");
-        assert_eq!(got, canonical_base, "variant {v:?} not idempotent");
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        // WITHOUT dunce: All should normalize to \\?\UNC\server\share (no trailing separator)
+        let expected = PathBuf::from(r"\\?\UNC\server\share");
+        assert_eq!(
+            canonical_base, expected,
+            "Base should be \\\\?\\UNC\\server\\share"
+        );
+
+        for v in variants {
+            let got = soft_canonicalize(&v).expect("canonicalize UNC root variant");
+            assert_eq!(
+                got, expected,
+                "Variant {v:?} should normalize to {expected:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // WITH dunce: All variants should normalize to the same result (may be simplified)
+        let canonical_base_str = canonical_base.to_string_lossy();
+        let canonical_base_normalized = PathBuf::from(
+            canonical_base_str
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&canonical_base_str),
+        );
+
+        for v in variants {
+            let got = soft_canonicalize(&v).expect("canonicalize UNC root variant");
+            let got_str = got.to_string_lossy();
+            let got_normalized = PathBuf::from(got_str.strip_prefix(r"\\?\").unwrap_or(&got_str));
+            assert_eq!(
+                got_normalized, canonical_base_normalized,
+                "Variant {v:?} should normalize to same as base"
+            );
+        }
     }
 }
 
@@ -192,15 +270,39 @@ fn test_windows_multiple_drive_letters_produce_verbatim_disk_prefix() {
     for drive in ['C', 'D', 'E', 'Z'] {
         let input = format!(r"{drive}:\nonexistent\child.txt");
         let got = soft_canonicalize(&input).expect("canonicalize drive letter path");
-        let expected_starts = format!(r"\\?\{drive}:\");
-        assert!(got.to_string_lossy().starts_with(&expected_starts));
+        let got_str = got.to_string_lossy();
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            // WITHOUT dunce: MUST have UNC prefix
+            let expected_starts = format!(r"\\?\{drive}:\");
+            assert!(
+                got_str.starts_with(&expected_starts),
+                "Without dunce, expected \\\\?\\{drive}:\\ prefix, got: {got_str}"
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // WITH dunce: Safe paths should be simplified (no UNC prefix)
+            assert!(
+                !got_str.starts_with(r"\\?\"),
+                "With dunce, safe paths should not have \\\\?\\ prefix, got: {got_str}"
+            );
+            let expected_starts = format!(r"{drive}:\");
+            assert!(
+                got_str.starts_with(&expected_starts),
+                "Expected {drive}:\\ prefix, got: {got_str}"
+            );
+        }
+
+        // Both cases: should end with the non-existing suffix
         assert!(
             got.ends_with(PathBuf::from(r"nonexistent\child.txt")),
             "Result should end with suffix for drive {drive}: {got:?}"
         );
     }
 }
-
 #[cfg(windows)]
 #[test]
 fn test_windows_raw_vs_canonicalized_starts_with_is_false() {
@@ -208,11 +310,39 @@ fn test_windows_raw_vs_canonicalized_starts_with_is_false() {
     let jail_raw = PathBuf::from(r"C:\NonExistent\Path\That\Does\Not\Exist");
     let child = soft_canonicalize(jail_raw.join("foo.txt")).expect("canonicalize child");
 
-    // Compare against the raw (non-canonical) jail; should be false
-    assert!(
-        !child.starts_with(&jail_raw),
-        "Raw jail must not be used for starts_with against canonicalized child"
-    );
+    #[cfg(not(feature = "dunce"))]
+    {
+        // WITHOUT dunce: Raw (C:\...) vs canonical (\\?\C:\...) are different formats
+        assert!(
+            !child.starts_with(&jail_raw),
+            "Raw jail (C:\\...) must not match canonicalized child (\\\\?\\C:\\...) in starts_with"
+        );
+
+        // Verify child IS in UNC format
+        assert!(child.to_string_lossy().starts_with(r"\\?\"));
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // WITH dunce: Both may be simplified to same format, so we need to canonicalize jail too
+        let jail_canonical = soft_canonicalize(&jail_raw).expect("canonicalize jail");
+
+        // Verify semantic relationship (normalize for comparison)
+        let child_str = child.to_string_lossy();
+        let jail_canonical_str = jail_canonical.to_string_lossy();
+
+        let child_normalized = PathBuf::from(child_str.strip_prefix(r"\\?\").unwrap_or(&child_str));
+        let jail_normalized = PathBuf::from(
+            jail_canonical_str
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&jail_canonical_str),
+        );
+
+        assert!(
+            child_normalized.starts_with(jail_normalized),
+            "Child should be under canonicalized jail (normalized)"
+        );
+    }
 }
 
 #[cfg(windows)]

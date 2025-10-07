@@ -226,6 +226,7 @@ pub(crate) fn resolve_anchored_symlink_chain(
 /// - Uses a visited set on textual paths to detect cycles without extra IO
 /// - Caps depth at MAX_SYMLINK_DEPTH (or a smaller heuristic for common system symlinks)
 /// - Re-resolves relative symlink targets against the parent of the current link
+#[inline]
 pub(crate) fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<PathBuf> {
     let mut current = symlink_path.to_path_buf();
     let mut depth = 0usize;

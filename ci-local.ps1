@@ -193,6 +193,25 @@ Run-Check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warning
 # Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
 $env:SKIP_PERMISSION_TESTS = "1"
 Run-Check "Tests (includes compilation)" "cargo test --verbose"
+
+# Run feature matrix tests (anchored and anchored+dunce)
+Write-Host ""
+Write-Host "Running feature matrix tests..." -ForegroundColor Cyan
+Write-Host "  Testing: anchored only" -ForegroundColor Yellow
+& cargo test --lib --features anchored
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Tests failed for anchored feature" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  Testing: anchored + dunce" -ForegroundColor Yellow
+& cargo test --lib --features anchored,dunce
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Tests failed for anchored+dunce features" -ForegroundColor Red
+    exit 1
+}
+Write-Host "SUCCESS: All feature combinations passed!" -ForegroundColor Green
+Write-Host ""
+
 Run-Check "Tests (all features)" "cargo test --all-features --verbose"
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 $env:RUSTDOCFLAGS = "-D warnings"
