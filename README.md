@@ -10,6 +10,10 @@
 
 **Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`** - this library brings the same functionality to Rust with enhanced performance and comprehensive testing.
 
+### Rust equivalent of Unix `realpath()` / `std::fs::canonicalize`
+
+This crate extends standard path canonicalization to support non-existing paths. See the [comparison table](#comparison-with-alternatives) for detailed feature comparisons.
+
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
@@ -27,7 +31,7 @@ For detailed benchmarks, analysis, and testing procedures, see the [`benches/`](
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.3"
+soft-canonicalize = "0.4"
 ```
 
 ### Code Example
@@ -130,10 +134,12 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 Each crate serves different use cases. Choose based on your primary need:
 
-| Crate                   | **Primary Purpose**                               | **Use Cases**                                                                     |
+| Tool/Crate              | **Primary Purpose**                               | **Use Cases**                                                                     |
 | ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `soft_canonicalize`     | **Path canonicalization + non-existing paths**    | When you need `std::fs::canonicalize` behavior but for paths that don't exist yet |
+| `realpath()` (libc)     | **Path canonicalization (existing paths only)**   | Unix/POSIX system call for path canonicalization                                  |
 | `std::fs::canonicalize` | **Path canonicalization (existing paths only)**   | Standard path canonicalization when all paths exist on filesystem                 |
+| `std::path::absolute`   | **Make paths absolute (no canonicalization)**     | Converting to absolute paths without resolving symlinks or normalizing            |
 | `dunce::canonicalize`   | **Windows compatibility layer**                   | Fixing Windows UNC issues for legacy app compatibility                            |
 | `normpath::normalize`   | **Safe normalization alternative**                | Avoiding Windows UNC bugs while normalizing paths                                 |
 | `path_absolutize`       | **CWD-relative path resolution**                  | Converting relative paths to absolute with performance optimization               |
@@ -141,13 +147,13 @@ Each crate serves different use cases. Choose based on your primary need:
 
 ### Feature Comparison
 
-| Feature                          | `soft_canonicalize`         | `std::fs::canonicalize` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `strict-path`       |
-| -------------------------------- | --------------------------- | ----------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
-| Works with non-existing paths    | ✅                           | ❌                       | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
-| Resolves symlinks                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
-| Windows UNC path support         | ✅                           | ✅                       | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
-| Zero dependencies                | ✅                           | ✅                       | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
-| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                       | ❌                     | ❌                     | ❌                 | ✅ (`VirtualRoot`)   |
+| Feature                          | `soft_canonicalize`         | `realpath()` (libc) | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` | `normpath::normalize` | `path_absolutize` | `strict-path`       |
+| -------------------------------- | --------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- | --------------------- | ----------------- | ------------------- |
+| Works with non-existing paths    | ✅                           | ❌                   | ❌                       | ✅                     | ❌                     | ✅                     | ✅                 | ✅ (via this crate)  |
+| Resolves symlinks                | ✅                           | ✅                   | ✅                       | ❌                     | ✅                     | ❌                     | ❌                 | ✅ (via this crate)  |
+| Windows UNC path support         | ✅                           | N/A (Unix/POSIX)    | ✅                       | ✅                     | ✅                     | ✅                     | ❌                 | ✅ (via this crate)  |
+| Zero dependencies                | ✅                           | N/A (system call)   | ✅                       | ✅                     | ✅                     | ❌                     | ❌                 | ❌ (uses this crate) |
+| Virtual/bounded canonicalization | ✅ (`anchored_canonicalize`) | ❌                   | ❌                       | ❌                     | ❌                     | ❌                     | ❌                 | ✅ (`VirtualRoot`)   |
 
 ## Known Limitations
 

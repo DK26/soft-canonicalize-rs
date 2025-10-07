@@ -8,11 +8,16 @@
 //! - Preserves robust behavior across Windows, macOS, and Linux
 //! - Provides zero-dependency, security-focused implementation
 //!
+//! ## Rust equivalent of Unix `realpath()` / `std::fs::canonicalize`
+//!
+//! This crate extends standard path canonicalization (like Unix `realpath()` or `std::fs::canonicalize`)
+//! to support non-existing paths.
+//!
 //! ## Quick Start
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.3"
+//! soft-canonicalize = "0.4"
 //! ```
 //!
 //! ### Cross-Platform Example
