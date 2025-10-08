@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2025-10-08
+
+### Added
+
+- **New `virtual_filesystem_demo` example** demonstrating multi-tenant security scenarios ([#31](https://github.com/DK26/soft-canonicalize-rs/pull/31))
+  - Complete example showing anchored canonicalization preventing directory traversal attacks
+  - Demonstrates proper symlink clamping in virtual filesystem contexts
+  - Includes both attack scenarios (what doesn't work) and correct usage patterns
+
+### Changed
+
+- **Documentation polish and reorganization**
+  - Improved README.md tagline for better clarity and searchability (mentions `realpath` for SEO)
+  - Enhanced "Why Use This?" section with clearer value propositions
+  - Streamlined "Comparison with Alternatives" section with "When to Use Each" bullet points
+  - Removed redundant "Testing & Quality" section (covered by value props)
+  - Added references to `virtual_filesystem_demo` example in README and lib.rs
+  - Enhanced lib.rs documentation with comprehensive "Why Use This?" section matching README quality
+  - Eliminated redundant messaging between sections
+
 ## [0.4.1] - 2025-10-08
 
 ### Added
