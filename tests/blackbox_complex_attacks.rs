@@ -70,7 +70,26 @@ fn test_toctou_symlink_swap_to_dangling() -> std::io::Result<()> {
     // The result should either be the original target or an error.
     // It should NOT be the dangling target.
     if let Ok(path) = result {
-        assert_eq!(path, fs::canonicalize(&real_target)?);
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(path, fs::canonicalize(&real_target)?);
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let expected_canonical = fs::canonicalize(&real_target)?;
+            #[cfg(windows)]
+            {
+                let path_str = path.to_string_lossy();
+                let expected_str = expected_canonical.to_string_lossy();
+                assert!(!path_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                assert_eq!(path_str.as_ref(), expected_str.trim_start_matches(r"\\?\"));
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(path, expected_canonical);
+            }
+        }
     }
 
     Ok(())
@@ -104,7 +123,28 @@ fn test_toctou_directory_swap() -> std::io::Result<()> {
 
     // The result should be the path in the original directory, or an error.
     if let Ok(path) = result {
-        assert!(path.starts_with(fs::canonicalize(tmpdir.path())?));
+        let canonical_tmpdir = fs::canonicalize(tmpdir.path())?;
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert!(path.starts_with(&canonical_tmpdir));
+        }
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce, strip UNC prefix from both for comparison
+            #[cfg(windows)]
+            {
+                let path_str = path.to_string_lossy();
+                let tmpdir_str = canonical_tmpdir.to_string_lossy();
+                let path_normalized = path_str.trim_start_matches(r"\\?\");
+                let tmpdir_normalized = tmpdir_str.trim_start_matches(r"\\?\");
+                assert!(path_normalized.starts_with(tmpdir_normalized));
+            }
+            #[cfg(not(windows))]
+            {
+                assert!(path.starts_with(canonical_tmpdir));
+            }
+        }
         assert!(path.to_string_lossy().contains("dir1"));
     }
 
@@ -127,7 +167,23 @@ fn test_windows_short_name_bypass() -> std::io::Result<()> {
     if short_name_dir.exists() {
         let attack_path = short_name_dir.join("secret.txt");
         let result = soft_canonicalize(attack_path)?;
-        assert_eq!(result, fs::canonicalize(&sensitive_file)?);
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(result, fs::canonicalize(&sensitive_file)?);
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let expected = fs::canonicalize(&sensitive_file)?;
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(
+                result_str.as_ref(),
+                expected_str.trim_start_matches(r"\\?\")
+            );
+        }
     }
 
     Ok(())
@@ -268,6 +324,11 @@ fn test_resource_exhaustion_long_filename() -> std::io::Result<()> {
 #[test]
 fn test_resource_exhaustion_many_components() -> std::io::Result<()> {
     let tmpdir = tmpdir();
+    #[cfg(not(feature = "dunce"))]
+    let mut expected_path = fs::canonicalize(tmpdir.path())?;
+    #[cfg(all(feature = "dunce", windows))]
+    let mut expected_path = dunce::canonicalize(tmpdir.path())?;
+    #[cfg(all(feature = "dunce", not(windows)))]
     let mut expected_path = fs::canonicalize(tmpdir.path())?;
     for i in 0..1024 {
         expected_path.push(format!("c{i}"));
@@ -278,7 +339,33 @@ fn test_resource_exhaustion_many_components() -> std::io::Result<()> {
     if let Ok(canonical_path) = result {
         // On Windows, the path may be truncated if it exceeds MAX_PATH.
         // So we check if the canonical path is a prefix of the expected path.
-        assert!(expected_path.starts_with(canonical_path));
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert!(expected_path.starts_with(canonical_path));
+        }
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce feature, paths may still have UNC prefix if they're too long for dunce to simplify
+            // (dunce refuses to simplify paths that exceed certain length limits for safety)
+            // So we normalize both to comparable format by stripping UNC prefix
+            let canonical_str = canonical_path.to_string_lossy();
+            let expected_str = expected_path.to_string_lossy();
+            let canonical_normalized = canonical_str.trim_start_matches(r"\\?\");
+            let expected_normalized = expected_str.trim_start_matches(r"\\?\");
+
+            // The canonical result might be truncated if it exceeds MAX_PATH,
+            // so we check if expected starts with canonical
+            assert!(
+                expected_normalized.starts_with(canonical_normalized),
+                "Expected path should start with canonical path.\n\
+                 Canonical: {} (len: {})\n\
+                 Expected:  {} (len: {})",
+                canonical_normalized,
+                canonical_normalized.len(),
+                expected_normalized,
+                expected_normalized.len()
+            );
+        }
     }
     Ok(())
 }
@@ -356,11 +443,39 @@ fn test_broken_symlink_jail_escape() -> std::io::Result<()> {
 
     // The final resolved path should not escape the jail.
     let canonical_jail = fs::canonicalize(&jail)?;
-    assert!(
-        result.starts_with(canonical_jail),
-        "Path escaped jail! Resolved to: {}",
-        result.display()
-    );
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert!(
+            result.starts_with(&canonical_jail),
+            "Path escaped jail! Resolved to: {}",
+            result.display()
+        );
+    }
+    #[cfg(feature = "dunce")]
+    {
+        // With dunce, strip UNC prefix from both for comparison
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let jail_str = canonical_jail.to_string_lossy();
+            let result_normalized = result_str.trim_start_matches(r"\\?\");
+            let jail_normalized = jail_str.trim_start_matches(r"\\?\");
+            assert!(
+                result_normalized.starts_with(jail_normalized),
+                "Path escaped jail! Resolved to: {}",
+                result.display()
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(
+                result.starts_with(canonical_jail),
+                "Path escaped jail! Resolved to: {}",
+                result.display()
+            );
+        }
+    }
 
     Ok(())
 }

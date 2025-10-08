@@ -15,11 +15,11 @@ mod windows_unc_tests {
         let jail = soft_canonicalize(jail_raw).expect("canonicalize jail");
         let child = soft_canonicalize(attacker).expect("canonicalize attacker");
 
-        assert!(
-            child.starts_with(&jail),
-            "Dotdot must be clamped to UNC share root: child={child:?}, jail={jail:?}"
+        let expected = jail.join("Windows").join("System32");
+        assert_eq!(
+            child, expected,
+            "Dotdot must clamp to share root and append tail exactly"
         );
-        assert_eq!(child, jail.join("Windows").join("System32"));
     }
 
     #[test]
@@ -44,9 +44,8 @@ mod windows_unc_tests {
 
         let jail = soft_canonicalize(jail_raw).expect("canonicalize jail");
         let got = soft_canonicalize(with_ads).expect("canonicalize with ADS");
-
-        assert!(got.starts_with(jail));
-        assert!(got.ends_with(PathBuf::from(r"folder\file.txt:secret")));
+        let expected = jail.join(r"folder\file.txt:secret");
+        assert_eq!(got, expected);
     }
 
     #[test]
@@ -61,8 +60,73 @@ mod windows_unc_tests {
 
         let jail = soft_canonicalize(jail_raw).expect("canonicalize jail");
         let got = soft_canonicalize(&path).expect("canonicalize long traversal");
+        let expected = jail.join(r"safe\child.txt");
+        assert_eq!(got, expected);
+    }
 
-        assert!(got.starts_with(jail));
-        assert!(got.ends_with(PathBuf::from(r"safe\child.txt")));
+    #[test]
+    fn unc_nonfinal_ads_component_rejected() {
+        // Colon-containing component before final must be rejected in UNC too
+        let input = r"\\server\share\dir:stream\leaf.txt";
+        let err = soft_canonicalize(input).expect_err("non-final ADS in UNC must be invalid");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn unc_directory_ads_final_preserved() {
+        // ADS-like suffix on a directory as final component should be preserved textually
+        let input = r"\\server\share\mydir:stream";
+        let got = soft_canonicalize(input).expect("canonicalize UNC directory ADS final");
+        let expected = PathBuf::from(r"\\?\UNC\server\share\mydir:stream");
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_directory_ads_final_with_type_preserved() {
+        // ADS-like suffix with explicit $DATA type in final component
+        let input = r"\\server\share\folder:stream:$DATA";
+        let got = soft_canonicalize(input).expect("canonicalize UNC directory ADS + type final");
+        let expected = PathBuf::from(r"\\?\UNC\server\share\folder:stream:$DATA");
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_directory_ads_type_only_final_preserved() {
+        // Type-only ADS token on a directory final component is preserved textually
+        let input = r"\\server\share\dir::$DATA";
+        let got = soft_canonicalize(input).expect("canonicalize UNC directory ::$DATA final");
+        let expected = PathBuf::from(r"\\?\UNC\server\share\dir::$DATA");
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_ads_whitespace_injection_preserved_textually() {
+        // Under UNC, ADS-like suffix with whitespace/control in final component is preserved textually
+        let cases: [(&str, &str); 5] = [
+            (
+                "\\\\server\\share\\file.txt: stream",
+                "\\\\?\\UNC\\server\\share\\file.txt: stream",
+            ),
+            (
+                "\\\\server\\share\\file.txt:stream ",
+                "\\\\?\\UNC\\server\\share\\file.txt:stream ",
+            ),
+            (
+                "\\\\server\\share\\file.txt:\tstream",
+                "\\\\?\\UNC\\server\\share\\file.txt:\tstream",
+            ),
+            (
+                "\\\\server\\share\\file.txt:stream\r",
+                "\\\\?\\UNC\\server\\share\\file.txt:stream\r",
+            ),
+            (
+                "\\\\server\\share\\file.txt:stream\n",
+                "\\\\?\\UNC\\server\\share\\file.txt:stream\n",
+            ),
+        ];
+        for (input, expected) in cases {
+            let got = soft_canonicalize(input).expect("canonicalize UNC ADS with whitespace");
+            assert_eq!(got, PathBuf::from(expected));
+        }
     }
 }

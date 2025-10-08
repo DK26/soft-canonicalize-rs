@@ -225,7 +225,17 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
 
                         // Verify it points outside jail (enabling detection)
                         let canonical_jail = fs::canonicalize(&jail)?;
+
+                        #[cfg(not(feature = "dunce"))]
                         let escapes_jail = !canonical.starts_with(&canonical_jail);
+
+                        #[cfg(feature = "dunce")]
+                        let escapes_jail = {
+                            let canonical_str = canonical.to_string_lossy();
+                            let jail_str = canonical_jail.to_string_lossy();
+                            let jail_simplified = jail_str.trim_start_matches(r"\\?\");
+                            !canonical_str.starts_with(jail_simplified)
+                        };
 
                         if escapes_jail {
                             println!(
@@ -239,7 +249,25 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
                         let expected_target = secrets.join("secret.txt");
                         if expected_target.exists() {
                             let canonical_target = fs::canonicalize(&expected_target)?;
-                            assert_eq!(canonical, canonical_target);
+
+                            #[cfg(not(feature = "dunce"))]
+                            {
+                                assert_eq!(canonical, canonical_target);
+                            }
+                            #[cfg(feature = "dunce")]
+                            {
+                                let canonical_str = canonical.to_string_lossy();
+                                let target_str = canonical_target.to_string_lossy();
+                                assert!(
+                                    !canonical_str.starts_with(r"\\?\"),
+                                    "dunce should simplify"
+                                );
+                                assert!(target_str.starts_with(r"\\?\"), "std returns UNC");
+                                assert_eq!(
+                                    canonical_str.as_ref(),
+                                    target_str.trim_start_matches(r"\\?\")
+                                );
+                            }
                         }
                     }
                     Err(e) => {
@@ -259,10 +287,24 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
                     Ok(canonical) => {
                         // Should still enable escape detection
                         let canonical_jail = fs::canonicalize(&jail)?;
-                        assert!(
-                            !canonical.starts_with(&canonical_jail),
-                            "Non-existing file through symlink should enable escape detection"
-                        );
+
+                        #[cfg(not(feature = "dunce"))]
+                        {
+                            assert!(
+                                !canonical.starts_with(&canonical_jail),
+                                "Non-existing file through symlink should enable escape detection"
+                            );
+                        }
+                        #[cfg(feature = "dunce")]
+                        {
+                            let canonical_str = canonical.to_string_lossy();
+                            let jail_str = canonical_jail.to_string_lossy();
+                            let jail_simplified = jail_str.trim_start_matches(r"\\?\");
+                            assert!(
+                                !canonical_str.starts_with(jail_simplified),
+                                "Non-existing file through symlink should enable escape detection"
+                            );
+                        }
                         println!("✓ Non-existing symlink escape properly resolved for detection");
                     }
                     Err(e) => {

@@ -151,3 +151,130 @@ fn non_existing_anchor_with_input_absolute_symlink_is_clamped_windows() -> std::
 
     Ok(())
 }
+
+#[test]
+fn anchored_toctou_symlink_swap_to_unc_is_clamped_windows() -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::fs::symlink_dir;
+    use std::thread;
+    use std::time::Duration;
+
+    let td = TempDir::new()?;
+    let anchor = td.path().join("root");
+    let safe_target = td.path().join("safe");
+    std::fs::create_dir_all(&anchor)?;
+    std::fs::create_dir_all(&safe_target)?;
+
+    let base = soft_canonicalize(&anchor)?;
+    let link = base.join("esc");
+
+    // Start with symlink pointing to a safe absolute dir
+    match symlink_dir(&safe_target, &link) {
+        Ok(_) => {}
+        Err(e) => {
+            if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
+                eprintln!("skipping: symlink creation not permitted on this Windows environment");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    }
+
+    // Spawn a thread to swap the symlink to a UNC absolute path while resolving
+    let link_swap = link;
+    let handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(10));
+        let _ = std::fs::remove_dir(&link_swap);
+        // Point at a UNC absolute path (won't be accessed; purely lexical)
+        let _ = symlink_dir(r"\\?\UNC\server\share", &link_swap);
+    });
+
+    // Resolve via anchor while the swap may occur
+    let out = anchored_canonicalize(&base, r"esc\child.txt")?;
+    handle.join().ok();
+
+    // Must remain clamped under the anchor regardless of swap
+    assert!(out.starts_with(&base));
+    Ok(())
+}
+
+#[test]
+fn anchored_toctou_symlink_swap_to_device_is_clamped_windows() -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::fs::symlink_dir;
+    use std::thread;
+    use std::time::Duration;
+
+    let td = TempDir::new()?;
+    let anchor = td.path().join("root");
+    let safe_target = td.path().join("safe");
+    std::fs::create_dir_all(&anchor)?;
+    std::fs::create_dir_all(&safe_target)?;
+
+    let base = soft_canonicalize(&anchor)?;
+    let link_dir = base.join("dirlink");
+
+    // Start with directory symlink pointing to a safe absolute dir
+    match symlink_dir(&safe_target, &link_dir) {
+        Ok(_) => {}
+        Err(e) => {
+            if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
+                eprintln!("skipping: symlink creation not permitted on this Windows environment");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    }
+
+    // Spawn a thread to swap the symlink to a Device namespace path while resolving
+    let link_swap = link_dir;
+    let handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(10));
+        let _ = std::fs::remove_dir(&link_swap);
+        // Attempt to point at a DeviceNS path; this may fail depending on environment
+        // Treat failure as non-fatal for the test's property (we still assert clamping)
+        let _ = symlink_dir(r"\\.\PIPE", &link_swap);
+    });
+
+    // Resolve via anchor while the swap may occur
+    let out = anchored_canonicalize(&base, r"dirlink\child.txt")?;
+    handle.join().ok();
+
+    // Must remain clamped under the anchor regardless of swap outcome
+    assert!(out.starts_with(&base));
+    Ok(())
+}
+
+#[test]
+fn anchored_absolute_symlink_to_device_is_clamped_windows() -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::fs::symlink_dir;
+
+    let td = TempDir::new()?;
+    let anchor = td.path().join("base");
+    std::fs::create_dir_all(&anchor)?;
+
+    // Use a common existing absolute directory target (device/disk path)
+    // We pick C:\Windows\System32 as a real absolute directory to avoid UNC dependencies.
+    let abs_target = r"C:\\Windows\\System32";
+
+    let base = soft_canonicalize(&anchor)?;
+    let link = base.join("escape");
+    match symlink_dir(abs_target, link) {
+        Ok(_) => {}
+        Err(e) => {
+            if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
+                eprintln!("skipping: symlink creation not permitted on this Windows environment");
+                return Ok(());
+            }
+            return Err(e);
+        }
+    }
+
+    // Absolute symlink target must be clamped under the anchor with virtual FS semantics
+    let out = anchored_canonicalize(&base, "escape")?;
+    // Expected: anchor + reinterpreted absolute target path (drive + components stripped)
+    let expected = base.join(r"Windows\System32");
+    assert_eq!(out, expected);
+    Ok(())
+}

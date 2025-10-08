@@ -160,16 +160,30 @@ mod windows_symlink_8_3_tests {
         let std_result = fs::canonicalize(existing_test)?;
         println!("std::fs::canonicalize result: {}", std_result.display());
 
-        // The result should match std::fs::canonicalize for the existing portion
-        assert!(
-            result.starts_with(&std_result),
-            "FAILURE: soft_canonicalize does not match std::fs::canonicalize!\n\
-             soft_canonicalize: {}\n\
-             std::fs::canonicalize: {}\n\
-             This indicates a problem with 8.3 handling when symlinks are present!",
-            result.display(),
-            std_result.display()
-        );
+        // The result must equal std::fs::canonicalize(existing) joined with the non-existing tail
+        let expected = std_result.join("nonexisting.txt");
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                result, expected,
+                "soft_canonicalize(existing)+tail must equal std(existing)+tail"
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let result_str_check = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(
+                !result_str_check.starts_with(r"\\?\"),
+                "dunce should simplify"
+            );
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            let std_simplified = expected_str.trim_start_matches(r"\\?\");
+            assert!(
+                result_str_check == std_simplified,
+                "soft_canonicalize(existing)+tail must equal std(existing)+tail (simplified)"
+            );
+        }
 
         // Check if 8.3 short name was expanded to long name
         let result_str = result.to_string_lossy();
@@ -225,6 +239,25 @@ mod windows_symlink_8_3_tests {
 
         assert!(result.is_absolute());
 
+        // Expected: canonicalize(target_dir) + non-existing tail
+        let expected = fs::canonicalize(&target_dir)?
+            .join("PROGRA~1")
+            .join("WINDOW~1")
+            .join("file.txt");
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(result, expected);
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let res_str = result.to_string_lossy();
+            let exp_str = expected.to_string_lossy();
+            assert!(!res_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(exp_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(res_str.as_ref(), exp_str.trim_start_matches(r"\\?\"));
+        }
+
         // The non-existing 8.3-like names should be preserved literally
         // since they don't exist and can't be expanded
         let result_str = result.to_string_lossy();
@@ -236,10 +269,25 @@ mod windows_symlink_8_3_tests {
 
         // Verify the symlink portion was resolved correctly
         let canon_target = fs::canonicalize(&target_dir)?;
-        assert!(
-            result.starts_with(canon_target),
-            "Result should start with canonicalized symlink target"
-        );
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert!(
+                result.starts_with(canon_target),
+                "Result should start with canonicalized symlink target"
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let result_check = result.to_string_lossy();
+            let canon_str = canon_target.to_string_lossy();
+            assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(canon_str.starts_with(r"\\?\"), "std returns UNC");
+            let canon_simplified = canon_str.trim_start_matches(r"\\?\");
+            assert!(
+                result_check.starts_with(canon_simplified),
+                "Result should start with canonicalized symlink target"
+            );
+        }
 
         Ok(())
     }
@@ -304,10 +352,25 @@ mod windows_symlink_8_3_tests {
                 "std::fs::canonicalize of existing portion: {}",
                 std_canon.display()
             );
-            assert!(
-                result.starts_with(&std_canon),
-                "Result should start with properly canonicalized existing portion"
-            );
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert!(
+                    result.starts_with(&std_canon),
+                    "Result should start with properly canonicalized existing portion"
+                );
+            }
+            #[cfg(feature = "dunce")]
+            {
+                let result_check = result.to_string_lossy();
+                let std_str = std_canon.to_string_lossy();
+                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+                let std_simplified = std_str.trim_start_matches(r"\\?\");
+                assert!(
+                    result_check.starts_with(std_simplified),
+                    "Result should start with properly canonicalized existing portion"
+                );
+            }
 
             // Check if LONGDI~1 is expanded or preserved
             let std_str = std_canon.to_string_lossy();
@@ -373,10 +436,25 @@ mod windows_symlink_8_3_tests {
         let existing_check = eight_three_dir.join("mylink").join("inner");
         if let Ok(std_canon) = fs::canonicalize(existing_check) {
             println!("std::fs::canonicalize result: {}", std_canon.display());
-            assert!(
-                result.starts_with(std_canon),
-                "Result should match std::fs::canonicalize for existing portion"
-            );
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert!(
+                    result.starts_with(std_canon),
+                    "Result should match std::fs::canonicalize for existing portion"
+                );
+            }
+            #[cfg(feature = "dunce")]
+            {
+                let result_check = result.to_string_lossy();
+                let std_str = std_canon.to_string_lossy();
+                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+                let std_simplified = std_str.trim_start_matches(r"\\?\");
+                assert!(
+                    result_check.starts_with(std_simplified),
+                    "Result should match std::fs::canonicalize for existing portion"
+                );
+            }
         }
 
         Ok(())
@@ -430,10 +508,26 @@ mod windows_symlink_8_3_tests {
         let std_result = fs::canonicalize(&test_path_long)?;
         println!("std::fs::canonicalize: {}", std_result.display());
 
-        assert_eq!(
-            result_long, std_result,
-            "soft_canonicalize should match std::fs::canonicalize for fully existing paths"
-        );
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                result_long, std_result,
+                "soft_canonicalize should match std::fs::canonicalize for fully existing paths"
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let result_str = result_long.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+            let std_simplified = std_str.trim_start_matches(r"\\?\");
+            assert_eq!(
+                result_str.as_ref(),
+                std_simplified,
+                "soft_canonicalize should match std::fs::canonicalize for fully existing paths"
+            );
+        }
 
         // Try to detect if there's an 8.3 alias (this is filesystem-dependent)
         // We'll use std::fs to check what the actual short name might be
@@ -490,10 +584,27 @@ mod windows_symlink_8_3_tests {
         let existing_check = first_83.join("mylink").join("SECOND~1");
         if let Ok(std_canon) = fs::canonicalize(existing_check) {
             println!("std::fs::canonicalize result: {}", std_canon.display());
-            assert!(
-                result.starts_with(std_canon),
-                "Result should match std::fs::canonicalize for existing portion"
-            );
+            #[cfg(not(feature = "dunce"))]
+            {
+                let expected = std_canon.join("file.txt");
+                assert_eq!(
+                    result, expected,
+                    "Result must equal std(existing)+tail for non-existing suffix"
+                );
+            }
+            #[cfg(feature = "dunce")]
+            {
+                let expected = std_canon.join("file.txt");
+                let result_check = result.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                let expected_simplified = expected_str.trim_start_matches(r"\\?\");
+                assert_eq!(
+                    result_check, expected_simplified,
+                    "Result must equal std(existing)+tail (simplified)"
+                );
+            }
         }
 
         Ok(())
@@ -579,15 +690,35 @@ mod windows_symlink_8_3_tests {
         println!("std result: {}", std_result.display());
 
         // CRITICAL: Must match exactly for existing paths
-        assert_eq!(
-            our_result, std_result,
-            "CRITICAL: soft_canonicalize MUST match std::fs::canonicalize for fully existing paths.\n\
-             This is a core requirement of the library.\n\
-             Our result: {}\n\
-             std result: {}",
-            our_result.display(),
-            std_result.display()
-        );
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                our_result, std_result,
+                "CRITICAL: soft_canonicalize MUST match std::fs::canonicalize for fully existing paths.\n\
+                 This is a core requirement of the library.\n\
+                 Our result: {}\n\
+                 std result: {}",
+                our_result.display(),
+                std_result.display()
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let our_str = our_result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert!(!our_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+            let std_simplified = std_str.trim_start_matches(r"\\?\");
+            assert_eq!(
+                our_str.as_ref(), std_simplified,
+                "CRITICAL: soft_canonicalize MUST match std::fs::canonicalize for fully existing paths.\n\
+                 This is a core requirement of the library.\n\
+                 Our result: {}\n\
+                 std result (simplified): {}",
+                our_result.display(),
+                std_simplified
+            );
+        }
 
         Ok(())
     }

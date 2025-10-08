@@ -151,17 +151,25 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
 
-    - name: Test feature matrix
+    - name: Test feature combinations
+      shell: bash
       run: |
-        echo "Testing feature combinations..."
-        echo "  Testing: anchored only"
-        cargo test --lib --features anchored
-        echo "  Testing: anchored + dunce"
-        cargo test --lib --features anchored,dunce
-        echo "✅ All feature combinations passed!"
-
-    - name: Run all features test
-      run: cargo test --all-features --verbose
+        echo "🧪 Testing feature combinations explicitly..."
+        echo ""
+        echo "1️⃣  Testing: anchored only"
+        cargo test --features anchored --verbose
+        echo ""
+        
+        # dunce feature is Windows-only, skip on Unix/Linux/macOS
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          echo "2️⃣  Testing: anchored + dunce (Windows-only)"
+          cargo test --features anchored,dunce --verbose
+          echo ""
+          echo "✅ Both feature combinations passed!"
+        else
+          echo "ℹ️  Skipping dunce feature tests (Windows-only, current OS: ${{ runner.os }})"
+          echo "✅ anchored feature tests passed!"
+        fi
 
   docs:
     name: Documentation

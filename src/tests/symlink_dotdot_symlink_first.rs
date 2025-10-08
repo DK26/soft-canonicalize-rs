@@ -107,7 +107,29 @@ fn symlink_first_with_non_existing_tail_windows() -> std::io::Result<()> {
 
     let expected_base = fs::canonicalize(&opt_sub)?;
     let expected = expected_base.join("hello").join("world");
-    assert_eq!(out, expected);
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(out, expected);
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // With dunce: our result is simplified, std is UNC
+        let out_str = out.to_string_lossy();
+        let expected_str = expected.to_string_lossy();
+        #[cfg(windows)]
+        {
+            assert!(!out_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(out_str.as_ref(), expected_str.trim_start_matches(r"\\?\"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(out, expected);
+        }
+    }
+
     Ok(())
 }
 
@@ -142,28 +164,49 @@ fn symlink_first_with_existing_tail_matches_std_windows() -> std::io::Result<()>
     let test_path = jail.join("special").join("..").join("hello").join("world");
 
     // Always assert our policy: resolve the symlinked component first, then apply `..`.
-    let soft = soft_canonicalize(&test_path)?;
-    let expected = fs::canonicalize(&opt_sub)?.join("hello").join("world");
-    assert_eq!(
-        soft, expected,
-        "soft_canonicalize should resolve via symlink target for existing tails on Windows"
-    );
 
-    // Additionally, check std compatibility when the environment supports it.
-    // Some Windows environments (certain Server builds/configs) resolve `..`
-    // lexically before following the symlink, making `jail/hello/world` the
-    // effective lookup which does not exist. In that case, std::fs::canonicalize
-    // returns NotFound (ERROR_PATH_NOT_FOUND, code 3). Treat that as environment-specific
-    // and skip only the std-compat assertion.
-    match fs::canonicalize(&test_path) {
-        Ok(stdp) => assert_eq!(
-            soft, stdp,
-            "soft_canonicalize should match std when std resolves this path"
-        ),
-        Err(e) if e.kind() == io::ErrorKind::NotFound || e.raw_os_error() == Some(3) => {
-            eprintln!("note: std::fs::canonicalize returned NotFound for symlink/.. path on this Windows environment; skipping std-compat sub-assertion");
+    let expected = fs::canonicalize(&opt_sub)?.join("hello").join("world");
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        let soft = soft_canonicalize(&test_path)?;
+        assert_eq!(
+            soft, expected,
+            "soft_canonicalize should resolve via symlink target for existing tails on Windows"
+        );
+
+        // Additionally, check std compatibility when the environment supports it.
+        // Some Windows environments (certain Server builds/configs) resolve `..`
+        // lexically before following the symlink, making `jail/hello/world` the
+        // effective lookup which does not exist. In that case, std::fs::canonicalize
+        // returns NotFound (ERROR_PATH_NOT_FOUND, code 3). Treat that as environment-specific
+        // and skip only the std-compat assertion.
+        match fs::canonicalize(test_path) {
+            Ok(stdp) => assert_eq!(
+                soft, stdp,
+                "soft_canonicalize should match std when std resolves this path"
+            ),
+            Err(e) if e.kind() == io::ErrorKind::NotFound || e.raw_os_error() == Some(3) => {
+                eprintln!("note: std::fs::canonicalize returned NotFound for symlink/.. path on this Windows environment; skipping std-compat sub-assertion");
+            }
+            Err(e) => return Err(e),
         }
-        Err(e) => return Err(e),
     }
+
+    #[cfg(feature = "dunce")]
+    {
+        let soft = soft_canonicalize(test_path)?;
+        // With dunce: our result is simplified, std is UNC
+        let soft_str = soft.to_string_lossy();
+        let expected_str = expected.to_string_lossy();
+        assert!(!soft_str.starts_with(r"\\?\"), "dunce should simplify");
+        assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        assert_eq!(
+            soft_str.as_ref(),
+            expected_str.trim_start_matches(r"\\?\"),
+            "soft_canonicalize should resolve via symlink target for existing tails on Windows"
+        );
+    }
+
     Ok(())
 }

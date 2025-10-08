@@ -19,7 +19,7 @@ This crate extends standard path canonicalization to support non-existing paths.
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
 **⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.3x (9,907 paths/s), Linux ~1.9x (238,038 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths  
-**🔒 Robust** - 409 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 436 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Robust path handling** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Optional features may add dependencies
@@ -109,7 +109,7 @@ assert_ne!(short_form, long_form);
 
 ### Test Coverage
 
-**409 comprehensive tests** including:
+**436 comprehensive tests** including:
 
 - **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
 - **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
@@ -151,6 +151,10 @@ The "soft" aspect means we can canonicalize paths even when the target doesn't e
 
 ## Optional Features
 
+This crate provides two optional features:
+- **`anchored`** - Virtual filesystem/bounded canonicalization (cross-platform)
+- **`dunce`** - Simplified Windows path output (Windows-only, no effect on Unix/Linux/macOS)
+
 ### Anchored Canonicalization (`anchored` feature)
 
 For **correct symlink resolution within virtual/constrained directory spaces**, use `anchored_canonicalize`. This function implements true virtual filesystem semantics by clamping ALL paths (including absolute symlink targets) to the anchor directory:
@@ -186,11 +190,13 @@ Key features of `anchored_canonicalize`:
 - **Component-by-component**: Processes path components in proper order
 - **Absolute results**: Always returns absolute canonical paths within the anchor boundary
 
-### Simplified Path Output (`dunce` feature)
+### Simplified Path Output (`dunce` feature, Windows-only)
 
-By default, `soft_canonicalize` returns Windows paths in extended-length UNC format (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names, and other Windows filesystem edge cases.
+**Windows-specific feature**: The `dunce` feature only affects Windows platforms. On Unix/Linux/macOS, it has no effect and adds no dependencies.
 
-If you need simplified paths (`C:\foo`) for compatibility with legacy applications or user-facing output, enable the **`dunce` feature**:
+By default on Windows, `soft_canonicalize` returns paths in extended-length UNC format (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names, and other Windows filesystem edge cases.
+
+If you need simplified paths (`C:\foo`) for compatibility with legacy Windows applications or user-facing output, enable the **`dunce` feature**:
 
 ```toml
 [dependencies]
@@ -224,6 +230,13 @@ The [dunce](https://crates.io/crates/dunce) crate intelligently simplifies Windo
 - Automatically keeps UNC for paths containing `..` (literal interpretation)
 
 All security validations remain unchanged - only the final output format is simplified when possible. On Unix systems, the feature has no effect.
+
+
+## Security & CVE Coverage
+
+Security does not depend on enabling features. The core API is secure-by-default; the optional `anchored` feature is a convenience for virtual roots. We test all modes (no features; `--features anchored`; `--features anchored,dunce`).
+
+See `docs/SECURITY.md` for details, usage patterns, and test references.
 
 
 ## Contributing

@@ -20,9 +20,41 @@ fn blackbox_clamp_and_preservation() -> std::io::Result<()> {
     for inp in inputs {
         let out = anchored_canonicalize(&base, inp)?;
         assert!(out.is_absolute());
-        assert!(out.starts_with(&base));
-        let s = out.to_string_lossy();
+
+        // Compute exact expected under virtual FS semantics
+        let expected = match inp {
+            // Absolute path: clamp to anchor
+            "/etc/passwd" => {
+                #[cfg(windows)]
+                {
+                    base.join(r"etc\passwd")
+                }
+                #[cfg(not(windows))]
+                {
+                    base.join("etc/passwd")
+                }
+            }
+            // Deep dotdot: clamp to anchor
+            s if s.starts_with("../") || s.contains("/../") => {
+                #[cfg(windows)]
+                {
+                    base.join(r"etc\passwd")
+                }
+                #[cfg(not(windows))]
+                {
+                    base.join("etc/passwd")
+                }
+            }
+            // Percent-encoded traversal: treated literally
+            s if s.contains("%2e") => base.join(s),
+            // Regular relative path
+            s => base.join(s),
+        };
+
+        assert_eq!(out, expected);
+
         // Blackbox: ensure we do not decode percent-encodings when present
+        let s = out.to_string_lossy();
         if inp.contains("%2e") {
             assert!(s.contains("%2e"));
         }
@@ -42,8 +74,11 @@ fn deep_dotdot_chain_is_clamped() -> std::io::Result<()> {
 
     let tail = "../".repeat(2048) + "etc/passwd";
     let out = anchored_canonicalize(&base, tail)?;
-    assert!(out.starts_with(&base));
-    assert!(out.ends_with("etc/passwd") || out.ends_with("etc\\passwd"));
+    #[cfg(windows)]
+    let expected = base.join(r"etc\passwd");
+    #[cfg(not(windows))]
+    let expected = base.join("etc/passwd");
+    assert_eq!(out, expected);
     Ok(())
 }
 
@@ -57,7 +92,8 @@ fn unix_backslash_is_literal_not_separator() -> std::io::Result<()> {
 
     let inp = r"a\..\b\c.txt"; // backslashes are regular chars on Unix
     let out = anchored_canonicalize(&base, inp)?;
-    assert!(out.starts_with(&base));
+    let expected = base.join(inp);
+    assert_eq!(out, expected);
     // Ensure the backslashes are preserved in the final string
     assert!(out.to_string_lossy().contains("\\..\\b\\c.txt"));
     Ok(())

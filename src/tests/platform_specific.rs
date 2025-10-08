@@ -82,11 +82,8 @@ fn test_windows_nonexistent_jail_starts_with_consistency() {
 
     let jail = soft_canonicalize(jail_raw).expect("canonicalize jail");
     let child = soft_canonicalize(child_raw).expect("canonicalize child");
-
-    assert!(
-        child.starts_with(&jail),
-        "Canonicalized child must start with canonicalized jail: child={child:?}, jail={jail:?}"
-    );
+    let expected = jail.join("foo.txt");
+    assert_eq!(child, expected);
 }
 
 #[cfg(windows)]
@@ -130,11 +127,8 @@ fn test_windows_unc_server_share_nonexistent_starts_with() {
 
     let jail = soft_canonicalize(jail_raw).expect("canonicalize UNC jail");
     let child = soft_canonicalize(child_raw).expect("canonicalize UNC child");
-
-    assert!(
-        child.starts_with(&jail),
-        "UNC child must start with UNC jail: child={child:?}, jail={jail:?}"
-    );
+    let expected = jail.join("foo.txt");
+    assert_eq!(child, expected);
 }
 
 #[cfg(windows)]
@@ -212,8 +206,7 @@ fn test_windows_unc_very_deep_stress_fast() {
     p.push("leaf.txt");
 
     let got = soft_canonicalize(&p).expect("canonicalize very deep UNC");
-    assert!(got.starts_with(PathBuf::from(r"\\?\UNC\server\share")));
-    assert!(got.ends_with(PathBuf::from("leaf.txt")));
+    assert_eq!(got, p);
 }
 
 #[cfg(windows)]
@@ -231,8 +224,8 @@ fn test_windows_unc_mixed_separators_are_normalized() {
     // Mixed separators should normalize and preserve UNC semantics
     let input = r"\\server\share/mixed\\seps/dir\file.txt";
     let got = soft_canonicalize(input).expect("canonicalize UNC with mixed separators");
-    assert!(got.starts_with(PathBuf::from(r"\\?\UNC\server\share")));
-    assert!(got.ends_with(PathBuf::from(r"mixed\seps\dir\file.txt")));
+    let expected = PathBuf::from(r"\\?\UNC\server\share\mixed\seps\dir\file.txt");
+    assert_eq!(got, expected);
 }
 
 #[cfg(windows)]
@@ -354,10 +347,8 @@ fn test_windows_relative_path_becomes_absolute_with_extended_prefix() {
     assert!(abs.is_absolute());
 
     let cwd = soft_canonicalize(env::current_dir().unwrap()).expect("canonicalize cwd");
-    assert!(
-        abs.starts_with(&cwd),
-        "Canonicalized relative path should start with canonicalized cwd: abs={abs:?}, cwd={cwd:?}"
-    );
+    let expected = cwd.join(r"non\existent\file.txt");
+    assert_eq!(abs, expected);
 }
 
 #[cfg(windows)]
@@ -433,6 +424,15 @@ fn test_windows_device_namespace_globalroot_lexical() {
 
 #[cfg(windows)]
 #[test]
+fn test_windows_device_namespace_colon_is_rejected_as_ads() {
+    // Colon-containing component must be final even under DeviceNS; reject malformed ADS placement
+    let input = r"\\.\PIPE\name:stream\..\other";
+    let err = soft_canonicalize(input).expect_err("colon in non-final component must be invalid");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+}
+
+#[cfg(windows)]
+#[test]
 fn test_windows_device_namespace_idempotent_for_physicaldrive() {
     let input = PathBuf::from(r"\\.\PhysicalDrive0");
     let got = soft_canonicalize(&input).expect("canonicalize PhysicalDrive0 lexically");
@@ -449,6 +449,23 @@ fn test_windows_device_namespace_parent_clamps_at_prefix() {
     // In DeviceNS, the device class (e.g., PIPE) is part of the prefix per std::path parsing,
     // so parent traversal cannot pop it. Expected: \\.\PIPE\other
     assert_eq!(got, PathBuf::from(r"\\.\PIPE\other"));
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_trailing_spaces_and_dots_preserved_verbatim() {
+    // Non-existing verbatim-safe cases: trailing spaces/dots must be preserved; no dunce simplification
+    let p1 = r"C:\NonExistent\trailing\file. ";
+    let p2 = r"C:\NonExistent\trailing\file..";
+
+    let got1 = soft_canonicalize(p1).expect("canonicalize trailing space");
+    let got2 = soft_canonicalize(p2).expect("canonicalize trailing dots");
+
+    let expected1 = PathBuf::from(r"\\?\C:\\NonExistent\trailing\file. ");
+    let expected2 = PathBuf::from(r"\\?\C:\\NonExistent\trailing\file..");
+
+    assert_eq!(got1, expected1);
+    assert_eq!(got2, expected2);
 }
 
 #[cfg(unix)]
@@ -534,7 +551,23 @@ fn test_windows_symlink_ancestor_nonexisting_tail_matches_std() -> std::io::Resu
             let leaf = "child_nonexist.txt";
             let got = soft_canonicalize(link.join(leaf))?;
             let expected = std::fs::canonicalize(&target)?.join(leaf);
-            assert_eq!(got, expected);
+
+            #[cfg(not(feature = "dunce"))]
+            {
+                // Without dunce: exact UNC match with std::fs::canonicalize
+                assert_eq!(got, expected);
+            }
+
+            #[cfg(feature = "dunce")]
+            {
+                // With dunce: our result is simplified, std is UNC
+                let got_str = got.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!got_str.starts_with(r"\\?\"), "dunce should simplify path");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                // Verify same logical path (strip UNC prefix for comparison)
+                assert_eq!(got_str.as_ref(), expected_str.trim_start_matches(r"\\?\"));
+            }
         }
         Err(e) => {
             eprintln!("Skipping symlink ancestor test due to symlink privilege error: {e}");

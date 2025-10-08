@@ -36,7 +36,30 @@ fn test_symlink_jail_break_prevention() -> std::io::Result<()> {
         let canonical_secret = fs::canonicalize(&secret_file)?;
 
         // The result should be the actual target (outside jail)
-        assert_eq!(result, canonical_secret);
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(result, canonical_secret);
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce: our result is simplified, std is UNC
+            #[cfg(windows)]
+            {
+                let result_str = result.to_string_lossy();
+                let canonical_str = canonical_secret.to_string_lossy();
+                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(canonical_str.starts_with(r"\\?\"), "std returns UNC");
+                assert_eq!(
+                    result_str.as_ref(),
+                    canonical_str.trim_start_matches(r"\\?\")
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(result, canonical_secret);
+            }
+        }
 
         // Verify that a security check would catch this
         let canonical_jail = fs::canonicalize(&jail)?;
@@ -76,7 +99,30 @@ fn test_symlinked_directory_jail_break_with_new_file() -> std::io::Result<()> {
         let result = soft_canonicalize(path_through_symlink)?;
         let expected = fs::canonicalize(&external_dir)?.join("new_file.txt");
 
-        assert_eq!(result, expected);
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(result, expected);
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce: our result is simplified, std is UNC
+            #[cfg(windows)]
+            {
+                let result_str = result.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                assert_eq!(
+                    result_str.as_ref(),
+                    expected_str.trim_start_matches(r"\\?\")
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(result, expected);
+            }
+        }
 
         // Verify this points outside jail (security check would catch this)
         let canonical_jail = fs::canonicalize(&jail)?;
@@ -121,7 +167,30 @@ fn test_nested_symlinked_directory_attack() -> std::io::Result<()> {
         let result = soft_canonicalize(attack_path)?;
         let expected = fs::canonicalize(external_target.join("secret.txt"))?;
 
-        assert_eq!(result, expected);
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(result, expected);
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            // With dunce: our result is simplified, std is UNC
+            #[cfg(windows)]
+            {
+                let result_str = result.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                assert_eq!(
+                    result_str.as_ref(),
+                    expected_str.trim_start_matches(r"\\?\")
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(result, expected);
+            }
+        }
 
         // Verify escape detection
         let canonical_jail = fs::canonicalize(&jail)?;

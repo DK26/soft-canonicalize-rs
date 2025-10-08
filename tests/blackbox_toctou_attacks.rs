@@ -101,10 +101,49 @@ fn test_toctou_directory_to_symlink_type_change() -> std::io::Result<()> {
 
             // The result must be one of the valid resolutions, depending on timing.
             // The most important outcome is that it doesn't crash or produce an invalid/inconsistent path.
-            assert!(
-                canonical_path == expected_final || canonical_path == expected_initial,
-                "Resolved path is not one of the valid expected outcomes."
-            );
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert!(
+                    canonical_path == expected_final || canonical_path == expected_initial,
+                    "Resolved path is not one of the valid expected outcomes."
+                );
+            }
+            #[cfg(feature = "dunce")]
+            {
+                #[cfg(windows)]
+                {
+                    let result_str = canonical_path.to_string_lossy();
+                    let final_str = expected_final.to_string_lossy();
+                    let initial_str = expected_initial.to_string_lossy();
+
+                    // dunce simplifies, std returns UNC
+                    assert!(
+                        !result_str.starts_with(r"\\?\"),
+                        "dunce should simplify path"
+                    );
+                    assert!(final_str.starts_with(r"\\?\"), "std returns UNC for final");
+                    assert!(
+                        initial_str.starts_with(r"\\?\"),
+                        "std returns UNC for initial"
+                    );
+
+                    let final_simplified = final_str.trim_start_matches(r"\\?\");
+                    let initial_simplified = initial_str.trim_start_matches(r"\\?\");
+
+                    assert!(
+                        result_str.as_ref() == final_simplified
+                            || result_str.as_ref() == initial_simplified,
+                        "Resolved path is not one of the valid expected outcomes."
+                    );
+                }
+                #[cfg(not(windows))]
+                {
+                    assert!(
+                        canonical_path == expected_final || canonical_path == expected_initial,
+                        "Resolved path is not one of the valid expected outcomes."
+                    );
+                }
+            }
         }
         Err(e) => {
             // An error is also an acceptable outcome, as the filesystem state changed

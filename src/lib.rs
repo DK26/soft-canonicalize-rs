@@ -123,7 +123,11 @@
 //! - Component-by-component: Processes path components in proper order
 //! - Absolute results: Always returns absolute canonical paths within the anchor boundary
 //!
-//! ### Simplified Path Output (`dunce` feature)
+//! ### Simplified Path Output (`dunce` feature, Windows-only)
+//!
+//! > **Windows-specific feature**: The `dunce` feature only affects Windows platforms. On
+//! > Unix/Linux/macOS, it has no effect and adds no runtime dependencies (configured as a
+//! > target-conditional dependency in `Cargo.toml`).
 //!
 //! By default, `soft_canonicalize` returns Windows paths in extended-length UNC format
 //! (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names,
@@ -171,7 +175,7 @@
 //! - Automatically keeps UNC for paths containing `..` (literal interpretation)
 //!
 //! All security validations remain unchanged - only the final output format is simplified when
-//! possible. On Unix systems, the feature has no effect.
+//! possible.
 //!
 //! ## Cross-Platform Notes
 //!
@@ -182,7 +186,7 @@
 //!
 //! ## Testing
 //!
-//! 409 tests including:
+//! 436 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
@@ -231,11 +235,11 @@ use crate::windows::{
 use std::io;
 use std::path::{Path, PathBuf};
 
-// When dunce feature is enabled, use dunce::canonicalize which simplifies paths
+// When dunce feature is enabled AND on Windows, use dunce::canonicalize which simplifies paths
 // Otherwise use std::fs::canonicalize
-#[cfg(feature = "dunce")]
+#[cfg(all(feature = "dunce", windows))]
 use dunce::canonicalize as fs_canonicalize;
-#[cfg(not(feature = "dunce"))]
+#[cfg(not(all(feature = "dunce", windows)))]
 use std::fs::canonicalize as fs_canonicalize;
 
 #[inline]
@@ -477,7 +481,7 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     // Stage 9 (Optional): dunce feature - simplify paths to legacy format when safe
     // dunce::simplified() intelligently strips \\?\ only when safe (no reserved names,
     // path length ok, no .., etc.). It performs no I/O and handles non-existing paths correctly.
-    #[cfg(feature = "dunce")]
+    #[cfg(all(feature = "dunce", windows))]
     {
         result = dunce::simplified(&result).to_path_buf();
     }
@@ -730,7 +734,7 @@ pub fn anchored_canonicalize(
     // Optional: dunce feature - simplify UNC paths to legacy format when safe
     // dunce::simplified() intelligently strips \\?\ only when safe (no reserved names,
     // path length ok, no .., etc.). It performs no I/O and handles non-existing paths correctly.
-    #[cfg(feature = "dunce")]
+    #[cfg(all(feature = "dunce", windows))]
     {
         base = dunce::simplified(&base).to_path_buf();
     }
@@ -771,7 +775,7 @@ mod tests {
     #[cfg(windows)]
     mod windows_path_stripping;
 
-    // dunce feature test suite (expected to fail until feature is implemented)
-    #[cfg(feature = "dunce")]
+    // dunce feature test suite (Windows-only)
+    #[cfg(all(feature = "dunce", windows))]
     mod dunce_feature;
 }
