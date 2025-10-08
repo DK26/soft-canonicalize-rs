@@ -176,34 +176,6 @@ See `docs/SECURITY.md` for details, usage patterns, and test references.
 - **`path_absolutize`** - Performance-optimized CWD-relative resolution with caching
 - **`strict-path`** - Type-safe path restriction with compile-time guarantees (uses this crate internally)
 
-## Testing & Quality
-
-### Test Coverage
-
-**436 comprehensive tests** including:
-
-- **11 std::fs::canonicalize compatibility tests** ensuring 100% behavioral compatibility
-- **80+ robustness tests** covering consistent canonicalization behavior and edge cases  
-- **42 Python pathlib test suite adaptations** for cross-language validation
-- **45+ Windows UNC path tests** including unicode preservation, long paths, and mixed separators
-- **50+ platform-specific tests** for Windows, macOS, and Linux edge cases
-- **22+ performance and stress tests** validating behavior under various conditions
-- **5 documentation tests** demonstrating API usage
-
-### 🔍 Tested Against Path Handling Edge Cases
-
-Our comprehensive test suite validates consistent canonicalization behavior across various challenging scenarios:
-
-- **Race Condition Robustness**: Consistent canonicalization behavior even when filesystem changes during processing
-- **Symlink Cycle Protection**: Detects and rejects circular symlink references to prevent infinite loops
-- **Malicious Stream Detection**: Validates Windows NTFS Alternate Data Stream syntax to reject malformed or suspicious patterns
-- **Path Equivalence Handling**: Consistent behavior with various path representations and edge cases
-- **Short Name Handling**: Proper canonicalization behavior with Windows 8.3 short names
-- **Long Path Support**: Correct handling of Windows extended-length paths and NTFS features
-- **Unicode Normalization**: Consistent handling of Unicode characters, zero-width characters, and normalization forms
-- **Path Resolution**: Comprehensive `..` resolution with cycle detection and boundary enforcement
-- **Cross-Platform Consistency**: Comprehensive testing across Windows, macOS, and Linux filesystem behaviors
-
 ## Known Limitations
 
 ### Windows Short Filename Equivalence
@@ -223,8 +195,6 @@ assert_ne!(short_form, long_form);
 ```
 
 **This is a fundamental limitation** shared by Python's `pathlib.Path.resolve(strict=False)` and other path canonicalization libraries across languages. Short filename mapping only exists when files/directories are actually created by the filesystem.
-
-**For existing paths**, this library correctly resolves short and long forms to the same canonical result, maintaining 100% compatibility with `std::fs::canonicalize`.
 
 ## What is Path Canonicalization?
 
