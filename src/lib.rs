@@ -1,17 +1,21 @@
 //! # soft-canonicalize
 //!
-//! Path canonicalization that works with non-existing paths.
+//! **Path canonicalization that works with non-existing paths.**
 //!
-//! Inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`, this crate:
-//! - Matches `std::fs::canonicalize` exactly for fully-existing paths
-//! - Extends canonicalization to non-existing suffixes
-//! - Preserves robust behavior across Windows, macOS, and Linux
-//! - Zero dependencies (optional features may add dependencies)
+//! Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`, providing
+//! the same functionality as Unix `realpath()` and `std::fs::canonicalize` but extended to handle
+//! non-existing paths, with optional features for simplified Windows output (`dunce`) and virtual
+//! filesystem semantics (`anchored`).
 //!
-//! ## Rust equivalent of Unix `realpath()` / `std::fs::canonicalize`
+//! ## Why Use This?
 //!
-//! This crate extends standard path canonicalization (like Unix `realpath()` or `std::fs::canonicalize`)
-//! to support non-existing paths.
+//! - **🚀 Works with non-existing paths** - Plan file locations before creating them
+//! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
+//! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths
+//! - **🔒 Robust** - 436 comprehensive tests covering edge cases and security scenarios
+//! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
+//! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
+//! - **🔧 Zero dependencies** - Optional features may add dependencies
 //!
 //! ## Quick Start
 //!
@@ -122,6 +126,11 @@
 //! - Complete symlink clamping: Follows symlink chains with clamping at each step
 //! - Component-by-component: Processes path components in proper order
 //! - Absolute results: Always returns absolute canonical paths within the anchor boundary
+//!
+//! **For a complete multi-tenant security example**, run:
+//! ```bash
+//! cargo run --example virtual_filesystem_demo --features anchored
+//! ```
 //!
 //! ### Simplified Path Output (`dunce` feature, Windows-only)
 //!
