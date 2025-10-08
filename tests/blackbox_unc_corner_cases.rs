@@ -43,10 +43,8 @@ mod windows_unc_tests {
     fn unc_path_with_special_chars_in_server_share() {
         let input = r"\\server-name.com\share$name\file";
         let got = soft_canonicalize(input).expect("canonicalize with special chars");
-        assert!(got
-            .to_string_lossy()
-            .starts_with(r"\\?\UNC\server-name.com\share$name"));
-        assert!(got.ends_with("file"));
+        let expected = PathBuf::from(r"\\?\UNC\server-name.com\share$name\file");
+        assert_eq!(got, expected);
     }
 
     // Skip case-insensitivity equality for non-existing UNC; we preserve input casing
@@ -57,5 +55,36 @@ mod windows_unc_tests {
         let expected = soft_canonicalize(r"\\server\share\file.txt").unwrap();
         let got = soft_canonicalize(input).expect("canonicalize with empty component");
         assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_server_with_colon_preserved() {
+        // Colon in server segment is treated lexically (no network access attempted)
+        let input = r"\\server:80\share\file.txt";
+        let got = soft_canonicalize(input).expect("canonicalize UNC with colon in server");
+        let expected = PathBuf::from(r"\\?\UNC\server:80\share\file.txt");
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_share_with_colon_preserved() {
+        // Colon in share segment is treated lexically (not ADS here)
+        let input = r"\\server\share:stream\file.txt";
+        let got = soft_canonicalize(input).expect("canonicalize UNC with colon in share");
+        let expected = PathBuf::from(r"\\?\UNC\server\share:stream\file.txt");
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unc_trailing_spaces_and_dots_preserved_verbatim() {
+        // Ensure trailing spaces/dots are preserved under UNC
+        let p1 = r"\\server\share\folder\file. ";
+        let p2 = r"\\server\share\folder\file..";
+        let got1 = soft_canonicalize(p1).expect("canonicalize UNC trailing space");
+        let got2 = soft_canonicalize(p2).expect("canonicalize UNC trailing dots");
+        let expected1 = PathBuf::from(r"\\?\UNC\server\share\folder\file. ");
+        let expected2 = PathBuf::from(r"\\?\UNC\server\share\folder\file..");
+        assert_eq!(got1, expected1);
+        assert_eq!(got2, expected2);
     }
 }

@@ -83,8 +83,40 @@ fn anchor_users_literal_nonexisting_windows() -> std::io::Result<()> {
     let out1 = anchored_canonicalize(anchor, r"hello\\world")?;
     let out2 = anchored_canonicalize(anchor, r"hello\\dir1\\dir2\\..\\..\\world")?;
 
-    let expected = std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world");
-    assert_eq!(out1, expected);
-    assert_eq!(out2, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        // WITHOUT dunce: MUST return UNC format
+        let expected =
+            std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world");
+        assert_eq!(
+            out1, expected,
+            "First output should match expected UNC format"
+        );
+        assert_eq!(
+            out2, expected,
+            "Second output should match expected UNC format"
+        );
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // WITH dunce: Should return simplified (non-UNC) format
+        let expected = std::path::PathBuf::from(r"C:\Users\non-existing\folder\hello\world");
+        assert_eq!(
+            out1, expected,
+            "First output should match expected simplified format"
+        );
+        assert_eq!(
+            out2, expected,
+            "Second output should match expected simplified format"
+        );
+
+        // Both outputs should be identical
+        assert_eq!(
+            out1, out2,
+            "Both traversal paths should resolve to same result"
+        );
+    }
+
     Ok(())
 }

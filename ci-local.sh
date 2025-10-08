@@ -230,8 +230,36 @@ echo
 run_check "Format Check" "cargo fmt --all -- --check"
 run_check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
-run_check "Tests (includes compilation)" "cargo test --verbose"
-run_check "Tests (all features)" "cargo test --all-features --verbose"
+# Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
+export SKIP_PERMISSION_TESTS=1
+run_check "Tests" "cargo test --verbose"
+
+# Test feature combinations
+echo ""
+echo "🧪 Testing feature combinations explicitly..."
+echo ""
+
+echo "1️⃣  Testing: anchored only"
+if ! cargo test --features anchored --verbose; then
+    echo "❌ Tests failed for anchored feature"
+    exit 1
+fi
+echo ""
+
+# dunce feature is Windows-only, skip on Unix/Linux/macOS
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+    echo "2️⃣  Testing: anchored + dunce (Windows-only)"
+    if ! cargo test --features anchored,dunce --verbose; then
+        echo "❌ Tests failed for anchored+dunce features"
+        exit 1
+    fi
+    echo ""
+    echo "✅ Both feature combinations passed!"
+else
+    echo "ℹ️  Skipping dunce feature tests (Windows-only, current OS: $OSTYPE)"
+    echo "✅ anchored feature tests passed!"
+fi
+echo ""
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 run_check "Documentation" "RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --document-private-items --all-features"
 

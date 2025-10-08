@@ -1,6 +1,27 @@
 # AGENTS: AI Contributor Guide
 
-This repo contains a zero-dependency Rust crate that canonicalizes paths when suffixes don't exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux. AI Contributor Guide
+This repo contains a zero-dependency Rust crate that canonicalizes paths when suffixes don't exist. It must match `std::fs::canonic## Coding Guideline## Coding Guidelines
+
+- Style: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
+- Error handling: Use `error_with_path` to attach offending path context; ensure `SoftCanonicalizeError::detail` is human-readable.
+- Allocation: Avoid temporary `String`s; prefer `PathBuf`, `OsString`, and component streaming.
+- Syscalls: Minimize `metadata`/`canonicalize` calls; keep fast-paths and early exits intact.
+- Performance: When adding or modifying functions in critical hot-path sections (e.g., path component iteration, validation checks, normalization helpers), consider using `#[inline]` to allow the compiler to optimize away function call overhead. Use `#[inline(always)]` sparingly and only when profiling confirms benefit.
+- Platform cfg: Keep Windows/Unix branches correct and side-effect free; don't introduce behavioral drift between platforms.
+- Dependencies: Do not add runtime dependencies. If you believe one is strictly necessary, open an issue first.le: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
+- Error handling: Use `error_with_path` to attach offending path context; ensu## Common Pitfalls (avoid)
+
+- Reordering fast-paths: Do not remove/flip the early `fs::canonicalize` checks vs lexical normalization.
+- Over-normalizing device/UNC prefixes: preserve verbatim/device prefixes; don't convert device namespaces.
+- Popping too far: Never ascend past root/share/device floors.
+- Eager symlink adoption: Only adopt resolved symlink path if target or its parent exists; otherwise keep the link as anchor.
+- Dropping error context: Don't return bare `io::Error` without the payload created by `error_with_path`.
+- **Using dunce without platform guard**: Never use `#[cfg(feature = "dunce")]` alone when calling `dunce::` functions. Always use `#[cfg(all(feature = "dunce", windows))]` because dunce is a Windows-only dependency.tCanonicalizeError::detail` is human-readable.
+- Allocation: Avoid temporary `String`s; prefer `PathBuf`, `OsString`, and component streaming.
+- Syscalls: Minimize `metadata`/`canonicalize` calls; keep fast-paths and early exits intact.
+- Platform cfg: Keep Windows/Unix branches correct and side-effect free; don't introduce behavioral drift between platforms.
+- Dependencies: Do not add runtime dependencies. If you believe one is strictly necessary, open an issue first.
+- **dunce feature usage (CRITICAL)**: Any code that uses `dunce::` functions MUST be guarded with `#[cfg(all(feature = "dunce", windows))]`. The dunce crate is a Windows-only target-conditional dependency. Using `#[cfg(feature = "dunce")]` alone will cause compilation errors on non-Windows platforms when the feature is enabled.xactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux. AI Contributor Guide
 
 This repo contains a zero-dependency Rust crate that canonicalizes pathsLinux/WSL (Bash):
 - If running from Windows, prefer WSL for Linux benches. From the repo root on the Linux side, run:
@@ -63,8 +84,107 @@ Do not change signatures or remove items without a clear migration plan and test
 These scripts:
 - Check UTF-8 encodings and BOM for critical files.
 - Run `cargo fmt --check`, `clippy -D warnings`, `cargo test --verbose` (includes doctests), and `cargo doc` with `RUSTDOCFLAGS='-D warnings'`.
+- **Test feature combinations explicitly**: `--features anchored` and `--features anchored,dunce` (NOT `--all-features`).
 - Run `cargo audit` (install if missing).
 - Verify MSRV by building and linting on Rust 1.70.0 (regenerates `Cargo.lock` as needed).
+
+### Feature Testing Policy (CRITICAL)
+
+**Feature combinations to test explicitly:**
+
+1. **`cargo test --features anchored`** - Primary use case (anchored canonicalization only)
+2. **`cargo test --features anchored,dunce`** - Full feature set (anchored + Windows path simplification)
+
+**Can now use `--all-features`** for testing on all platforms. The dunce feature is properly guarded with `#[cfg(all(feature = "dunce", windows))]` in all code that directly uses `dunce::` functions.
+
+**Important**: The `dunce` feature changes output format on Windows (UNC `\\?\C:\...` → simplified `C:\...`), so tests MUST use feature-conditional assertions with `#[cfg(feature = "dunce")]` blocks when comparing with `std::fs::canonicalize` (which always returns UNC format).
+
+**Critical rule for code**: Any code that calls `dunce::` functions directly MUST use `#[cfg(all(feature = "dunce", windows))]`, not just `#[cfg(feature = "dunce")]`.
+
+**Platform-specific feature testing**:
+- **dunce on Linux/Unix**: The dunce feature is a Windows-only dependency (target-conditional in Cargo.toml). On non-Windows platforms, it adds no dependencies and has no effect. Therefore, testing `--features anchored,dunce` on Linux is redundant—it behaves identically to `--features anchored`. The CI pipeline does NOT need to test dunce on Linux.
+- **Cross-platform path handling**: While dunce doesn't need Linux testing, we DO test how the crate handles Windows-style paths (UNC, backslashes, drive letters) on Unix to ensure graceful behavior in cross-platform scenarios (see `tests/cross_platform_paths.rs`). These tests verify that:
+  - Windows UNC paths fail gracefully on Unix (no panics)
+  - Windows drive letters are handled predictably on Unix
+  - Unix-style forward slashes work on Windows (Windows accepts / as separator)
+  - Relative paths and dot-dot resolution work consistently across platforms
+
+**Rationale**: Explicit feature flags make CI intentions clear and catch feature-specific issues. The ambiguous `--all-features` hides which combinations are being tested and makes failures harder to debug.
+
+### ⚠️ CRITICAL: Symlink Permission Testing Trap (Windows)
+
+**Problem**: On Windows, creating symlinks requires elevated privileges or Developer Mode. This creates a dangerous testing blind spot:
+
+- **Locally**: Tests that create symlinks skip gracefully with error 1314 (`ERROR_PRIVILEGE_NOT_HELD`)
+- **CI (GitHub Actions)**: Windows runners have symlink privileges enabled, so these tests RUN
+
+**Why This Matters**:
+1. Tests that skip locally will execute on GitHub Actions
+2. If these tests compare with `std::fs::canonicalize` without feature-conditional assertions, they will FAIL in CI when dunce feature is enabled
+3. You won't catch these failures until after you push to GitHub
+
+**How to Identify These Tests**:
+Search for these patterns in test files:
+```bash
+# Tests that skip on permission errors
+grep -r "PermissionDenied\|raw_os_error.*1314\|Skipping.*permission" tests/
+grep -r "got_symlink_permission" tests/
+```
+
+**Mandatory Pattern for These Tests**:
+ALL tests that:
+- Check `PermissionDenied` or `raw_os_error() == Some(1314)`
+- Call `got_symlink_permission()` helper
+- Would skip locally but run on GitHub Actions
+
+MUST have feature-conditional assertions when comparing with `std::fs::canonicalize`:
+
+```rust
+#[test]
+fn test_with_symlinks() -> std::io::Result<()> {
+    let tmpdir = tmpdir();
+    
+    // Permission check - test skips locally but runs on CI
+    if !got_symlink_permission(&tmpdir) {
+        return Ok(());
+    }
+    
+    // ... create symlinks ...
+    let result = soft_canonicalize(&path)?;
+    
+    // CRITICAL: Must use feature-conditional assertion!
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, std::fs::canonicalize(&path)?);
+    }
+    #[cfg(feature = "dunce")]
+    {
+        let result_str = result.to_string_lossy();
+        let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
+        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+        assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+    }
+    
+    Ok(())
+}
+```
+
+**Files with Symlink-Skipping Tests** (all must have feature guards):
+- `tests/std_compat.rs` - Tests with `got_symlink_permission()`
+- `tests/blackbox_toctou_attacks.rs` - TOCTOU race condition tests
+- `tests/blackbox_complex_attacks.rs` - Complex attack vectors
+- `tests/blackbox_security.rs` - Security escape attempts
+- `tests/windows_symlink_8_3_interaction.rs` - All 7 tests with permission checks
+- `src/tests/symlink_dotdot_symlink_first.rs` - Symlink-first resolution tests
+
+**Before Committing**:
+1. Search for ALL tests with symlink permission checks
+2. Verify each has feature-conditional assertions when comparing with `std::fs::canonicalize`
+3. Look for `assert_eq!`, `assert!(...starts_with(...))`, and direct path comparisons
+4. If unsure, add feature guards - they're safe even if not strictly needed
+
+**Remember**: Tests that pass locally might fail on GitHub Actions if they lack proper feature guards!
 
 ## Coding Guidelines
 
@@ -100,11 +220,78 @@ These scripts:
 
 - Anchored semantics:
   - `anchored_canonicalize` soft-canonicalizes the anchor internally. Do not pre-canonicalize anchors in examples unless demonstrating manual behavior.
-  - Clamp behavior: lexical `..` clamps to the anchor. Following an absolute symlink disables clamp (escape is allowed by design). Relative symlinks keep clamp. Write tests that affirm these rules explicitly.
+  - **Virtual filesystem semantics (v0.4.0+)**: The anchor acts as a virtual root. All symlinks (both absolute and relative) that resolve outside the anchor are clamped back into the virtual filesystem.
+    - Absolute symlinks: Reinterpreted relative to the anchor (e.g., `/etc/passwd` → `anchor/etc/passwd`)
+    - Relative symlinks that escape: Clamped using common ancestor logic (e.g., `../../opt/file` → `anchor/opt/file`)
+    - Lexical `..` traversal: Always clamps to the anchor boundary
+  - Write tests that affirm these clamping rules explicitly using exact path assertions.
 
 - Symlinks in tests:
   - Unix: symlink creation is reliable; create real symlinks and assert exact resolved results.
-  - Windows: symlink creation may require privileges; tests that depend on symlinks should skip gracefully on `PermissionDenied` (or raw OS 1314). We already have such patterns in `src/tests/anchored_security/windows_symlink.rs`.
+  - Windows: symlink creation requires privileges (error 1314 = `ERROR_PRIVILEGE_NOT_HELD`).
+    - **Local testing policy**: Tests should skip gracefully on symlink privilege errors. Local developers and `ci-local` scripts run without elevated privileges, and these tests will be validated by GitHub Actions runners which have symlink privileges enabled.
+    - **Test implementation patterns**:
+      - **Regression/behavior tests**: Always skip gracefully on error 1314 with a clear message (e.g., "skipping: symlink creation not permitted"). These are the majority of tests and must not fail locally.
+      - **Diagnostic tests**: May panic on error 1314 to inform developers that the diagnostic requires privileges to run locally. These are debugging tools, not regular tests.
+    - **CI environment**: GitHub Actions Windows runners have symlink privileges enabled, so all symlink tests (both regression and diagnostic) will execute fully in CI.
+
+- Feature-conditional assertions (dunce feature):
+  - **IMPORTANT**: The dunce feature is Windows-only (target-conditional dependency in Cargo.toml). On non-Windows platforms, the feature is effectively disabled and adds no dependencies.
+  - **Testing pattern**: Tests comparing results with `std::fs::canonicalize` MUST use `#[cfg(feature = "dunce")]` guards for UNC-specific assertions.
+  - **CRITICAL**: If test code directly calls `dunce::` functions (not just our library functions), use `#[cfg(all(feature = "dunce", windows))]` to prevent compilation errors on non-Windows platforms.
+  - Without dunce: `assert_eq!(result, std::fs::canonicalize(&path)?)` - exact match expected (UNC on Windows, normal on Unix).
+  - With dunce on Windows: Compare simplified result (no `\\?\` prefix) with stripped version of std's UNC output.
+  - Recommended pattern:
+    ```rust
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, std::fs::canonicalize(&path)?);
+    }
+    #[cfg(feature = "dunce")]
+    {
+        let result_str = result.to_string_lossy();
+        let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
+        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+        assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+    }
+    ```
+  - **Cleaner alternative using macro** (optional, for tests with many repetitive comparisons):
+    ```rust
+    // Define at top of test file (use sparingly - explicit patterns are more debuggable)
+    macro_rules! assert_std_compat {
+        ($result:expr, $path:expr) => {
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert_eq!($result, std::fs::canonicalize(&$path)?);
+            }
+            #[cfg(feature = "dunce")]
+            {
+                let result_str = $result.to_string_lossy();
+                let std_str = std::fs::canonicalize(&$path)?.to_string_lossy();
+                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+                assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+            }
+        };
+    }
+    
+    // Usage in test
+    let result = soft_canonicalize(&path)?;
+    assert_std_compat!(result, path);
+    ```
+  - **If calling dunce directly in tests** (e.g., for building expected paths):
+    ```rust
+    // CORRECT: Platform guard when calling dunce:: directly
+    #[cfg(all(feature = "dunce", windows))]
+    let expected = dunce::canonicalize(&path)?;
+    #[cfg(not(feature = "dunce"))]
+    let expected = std::fs::canonicalize(&path)?;
+    
+    // WRONG: Will fail on Linux with --all-features
+    #[cfg(feature = "dunce")]
+    let expected = dunce::canonicalize(&path)?; // ❌ dunce not available on Linux
+    ```
 
 - Environment assumptions:
   - Do not depend on global machine directories (e.g., `C:\\Users`) unless you defend with a skip or your assertion is valid for non-existing paths as well.
@@ -123,7 +310,7 @@ These scripts:
     let out = anchored_canonicalize(anchor, r"hello\\world")?;
     assert_eq!(out, std::path::PathBuf::from(r"\\?\C:\\Users\\non-existing\\folder\\hello\\world"));
     ```
-  - Relative symlink keeps clamp (Windows example uses skip-on-1314 pattern; see existing tests): ensure equality with exact expected path, not hints.
+  - Relative symlink keeps clamp (Windows example fails on local machines without privileges but runs on GitHub Actions): ensure equality with exact expected path, not hints.
 
 - Virtual vs system paths (for downstream crates):
   - If a downstream crate exposes a “virtual” display that’s lexical, assert lexical results there.

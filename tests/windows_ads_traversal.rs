@@ -157,6 +157,50 @@ fn test_positive_ads_final_component_allowed() -> io::Result<()> {
 }
 
 #[test]
+fn test_directory_ads_final_component_allowed() -> io::Result<()> {
+    // Accept ADS pattern when applied to a directory as the final component
+    let tmp = tempfile::tempdir()?;
+    let dir = tmp.path().join("mydir");
+    fs::create_dir(&dir)?;
+
+    // Build input with ADS suffix on the directory
+    let input = std::path::PathBuf::from(format!("{}:stream", dir.display()));
+    let out = soft_canonicalize(input)?;
+
+    // Expected: canonicalize(dir) with the ADS suffix appended textually
+    let canon_dir = std::fs::canonicalize(&dir)?;
+    let expected = std::path::PathBuf::from(format!("{}:stream", canon_dir.display()));
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(out, expected);
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        // For ADS-bearing paths, keep UNC for safety; do not simplify
+        assert!(out.to_string_lossy().starts_with(r"\\?\"));
+        assert_eq!(out, expected);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_directory_ads_type_only_final_rejected() -> io::Result<()> {
+    // Type-only ADS token as final component should be rejected for directories
+    let tmp = tempfile::tempdir()?;
+    let dir = tmp.path().join("adsdir");
+    fs::create_dir(&dir)?;
+
+    let input = std::path::PathBuf::from(format!("{}::$DATA", dir.display()));
+    let err = soft_canonicalize(input).expect_err("dir::$DATA must be invalid");
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+    Ok(())
+}
+
+#[test]
 fn test_trailing_colon_rejected() -> io::Result<()> {
     let tmp = tempfile::tempdir()?;
     let base = tmp.path().join("file.txt");

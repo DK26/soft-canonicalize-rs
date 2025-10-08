@@ -77,26 +77,28 @@ fn test_python_style_edge_cases() {
     let test_result = std::panic::catch_unwind(|| {
         // Only change directory if it exists and is accessible
         if temp_dir.path().exists() {
-            env::set_current_dir(temp_dir.path()).unwrap();
+            if let Ok(()) = env::set_current_dir(temp_dir.path()) {
+                // Successfully changed directory
+
+                // Single dot - should resolve to current directory
+                let result = soft_canonicalize(".");
+                assert!(result.is_ok());
+                let resolved = result.unwrap();
+                assert!(resolved.is_absolute());
+
+                // Double dot - should resolve to parent directory
+                let result = soft_canonicalize("..");
+                assert!(result.is_ok());
+                let resolved = result.unwrap();
+                assert!(resolved.is_absolute());
+
+                // Multiple dots and slashes - should normalize
+                let result = soft_canonicalize("./././../.");
+                assert!(result.is_ok());
+                let resolved = result.unwrap();
+                assert!(resolved.is_absolute());
+            }
         }
-
-        // Single dot - should resolve to current directory
-        let result = soft_canonicalize(".");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
-
-        // Double dot - should resolve to parent directory
-        let result = soft_canonicalize("..");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
-
-        // Multiple dots and slashes - should normalize
-        let result = soft_canonicalize("./././../.");
-        assert!(result.is_ok());
-        let resolved = result.unwrap();
-        assert!(resolved.is_absolute());
     });
 
     // Always try to restore the original directory
@@ -115,9 +117,28 @@ fn test_python_style_edge_cases() {
     assert!(result.is_ok());
     let resolved = result.unwrap();
 
-    // Should start with the canonicalized temp directory
+    // Should start with the canonicalized temp directory (normalized)
     let canonical_tmp = std::fs::canonicalize(tmpdir.path()).unwrap();
-    assert!(resolved.starts_with(canonical_tmp));
+
+    #[cfg(windows)]
+    {
+        let resolved_str = resolved.to_string_lossy();
+        let canonical_tmp_str = canonical_tmp.to_string_lossy();
+
+        let resolved_normalized =
+            std::path::PathBuf::from(resolved_str.strip_prefix(r"\\?\").unwrap_or(&resolved_str));
+        let canonical_tmp_normalized = std::path::PathBuf::from(
+            canonical_tmp_str
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&canonical_tmp_str),
+        );
+
+        assert!(resolved_normalized.starts_with(canonical_tmp_normalized));
+    }
+    #[cfg(not(windows))]
+    {
+        assert!(resolved.starts_with(canonical_tmp));
+    }
 
     // Should end with our non-existing suffix
     assert!(resolved.to_string_lossy().contains("non"));

@@ -1,6 +1,6 @@
 [package]
 name = "soft-canonicalize"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Path canonicalization that works with non-existing paths."
@@ -14,7 +14,9 @@ readme = "README.md"
 rust-version = "1.70.0"
 
 [dependencies]
-# Zero dependencies - pure std library implementation
+# Optional dunce dependency for path simplification (Windows-only)
+[target.'cfg(windows)'.dependencies]
+dunce = { version = "1.0", optional = true }
 
 [dev-dependencies]
 # MSRV guard: tempfile >=3.22 pulls windows-sys 0.61+ requiring rustc >=1.71.
@@ -23,8 +25,13 @@ tempfile = "=3.21" # Do not update
 
 [features]
 default = []
-# Opt-in API for anchored canonicalization semantics. No extra deps.
+# Opt-in API exposing anchored_canonicalize() function. No extra deps. Disabled by default to reduce binary size.
 anchored = []
+# Opt-in dunce behavior (Windows-only): simplify Windows UNC paths (\\?\C:\foo) to legacy format (C:\foo) when safe.
+# This enables compatibility with legacy programs while maintaining non-existing path support.
+# On non-Windows platforms, this feature has no effect and adds no dependencies.
+# Adds dunce crate as dependency on Windows only.
+dunce = ["dep:dunce"]
 
 [[example]]
 name = "basic_usage"

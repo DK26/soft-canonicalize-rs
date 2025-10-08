@@ -124,13 +124,51 @@ fn test_fast_path_bypass_attempts() -> std::io::Result<()> {
     // Verify fast path works
     let result = soft_canonicalize(&existing_file)?;
     let expected = fs::canonicalize(&existing_file)?;
-    assert_eq!(result, expected);
+
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
 
     // Now try to create similar path that might confuse the fast path detection
     let tricky_path = existing_file.join("").join("..").join("existing.txt");
     let result2 = soft_canonicalize(tricky_path)?;
+
     // Should still resolve correctly even though it bypassed fast path
-    assert_eq!(result2, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result2, expected, "Without dunce: exact match");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result2_str = result2.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result2_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result2, expected);
+        }
+    }
 
     Ok(())
 }

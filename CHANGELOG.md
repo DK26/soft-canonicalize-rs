@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-10-08
+
+### Added
+
+- **New optional `dunce` feature** for simplified Windows path output (Windows-only) ([#26](https://github.com/DK26/soft-canonicalize-rs/issues/26))
+  - **Windows-specific**: Feature only affects Windows; has no effect and adds no dependencies on Unix/Linux/macOS
+  - Configured as target-conditional dependency in Cargo.toml (`[target.'cfg(windows)'.dependencies]`)
+  - When enabled on Windows, returns familiar paths (`C:\foo`) instead of extended-length UNC format (`\\?\C:\foo`) when safe
+  - Zero code duplication - delegates all safety logic to the battle-tested [dunce](https://crates.io/crates/dunce) crate
+  - Opt-in feature provides user choice between security (UNC, default) and compatibility (simplified)
+  - Captures the dunce crate's market: "Like dunce, but works with non-existing paths"
+  - Automatically keeps UNC format for:
+    - Paths longer than 260 characters
+    - Reserved device names (CON, PRN, NUL, COM1-9, LPT1-9)
+    - Paths with trailing spaces or dots
+    - Paths containing literal `..` components
+  
+- **Comprehensive exotic edge case tests** from dunce/MSDN analysis ([#28](https://github.com/DK26/soft-canonicalize-rs/issues/28))
+  - 14 new tests covering Windows filename edge cases
+  - Reserved names with extensions and trailing characters
+  - Unicode normalization and multibyte UTF-16 handling
+  - Long paths and deeply nested directories
+  - Control characters in different contexts
+  - All edge cases verified - no implementation changes needed
+
+- **Cross-platform path handling tests** (`tests/cross_platform_paths.rs`)
+  - 12 new tests verifying graceful handling of Windows-style paths on Unix and vice versa
+  - Unix tests: Windows UNC paths, drive letters, backslash handling, absolute paths
+  - Windows tests: UNC network paths, device namespaces, mixed separators, Unix-style forward slashes
+  - Important for build systems, package managers, and cross-compilation tools
+
+- **Comprehensive Windows 8.3 short name test coverage**
+  - 16 new tests for 8.3 detection and expansion behavior (`windows_8_3_actual_expansion.rs`, `windows_8_3_toctou_anchored.rs`, `windows_8_3_unit_tests.rs`)
+  - 9 new tests for symlink+8.3 interaction scenarios (`windows_symlink_8_3_interaction.rs`)
+  - Validates correct handling of short names, TOCTOU race conditions, and symlink resolution with extended-length prefixes
+
+- **Documentation improvements** ([#23](https://github.com/DK26/soft-canonicalize-rs/issues/23), [#24](https://github.com/DK26/soft-canonicalize-rs/issues/24), [#25](https://github.com/DK26/soft-canonicalize-rs/issues/25))
+  - Added `realpath()` (libc) to comparison tables for better discoverability
+  - Added `std::path::absolute()` to comparison tables
+  - Updated version references from 0.3 to 0.4
+  - Enhanced feature documentation in README and lib.rs
+
+### Fixed
+
+- **Critical bug in `anchored_canonicalize` symlink clamping** ([#27](https://github.com/DK26/soft-canonicalize-rs/issues/27))
+  - **Issue**: When a relative symlink resolved outside the anchor boundary, the function would discard all path information and return just the anchor itself
+  - **Impact**: Broke virtual filesystem semantics for downstream crates (strict-path-rs)
+  - **Fix**: Implemented proper common ancestor detection to preserve path structure while clamping
+  - **Example**: `jail/special -> ../../opt/subdir` now correctly resolves to `jail/opt/subdir/...` instead of just `jail`
+  - Discovered via downstream CI failure in strict-path-rs ([issue #18](https://github.com/DK26/strict-path-rs/issues/18))
+
+### Performance
+
+- **Updated benchmark results** (October 8, 2025, 5-run median protocol)
+  - Windows: 9,907 paths/s (1.31x faster than Python pathlib) — improved from 7,985 paths/s
+  - Linux (WSL): 238,038 paths/s (2.90x faster than Python 3.13 pathlib) — improved from 1.68x to 2.90x speedup
+
+### Changed
+
+- **Test suite enhancements**
+  - Test count increased from 339 to 434 tests (429 unit tests + 5 doc tests)
+  - Added comprehensive dunce feature test suite (585 lines)
+  - Added format verification tests to ensure exact output format per feature state
+  - Added cross-platform path handling tests (12 tests, 369 lines)
+  - Added Windows 8.3 short name tests (25 tests across 4 files)
+  - Added exotic edge case tests (14 tests, 880 lines)
+  - Refactored 13+ test files to use explicit `#[cfg]` blocks for feature-conditional testing
+  - Enhanced CI with feature matrix testing (anchored, anchored+dunce combinations)
+
+### Internal
+
+- Performance optimizations: Added `#[inline]` to hot paths (`simple_normalize_path`, `compute_existing_prefix`, `resolve_simple_symlink_chain`)
+- Enhanced CI scripts (`ci-local.ps1`, `ci-local.sh`) with feature combination testing
+
 ## [0.4.0] - 2025-10-05
 
 ### Performance

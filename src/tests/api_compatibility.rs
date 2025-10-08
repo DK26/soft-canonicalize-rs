@@ -16,7 +16,25 @@ fn test_generic_path_parameter_str() -> std::io::Result<()> {
     let result = soft_canonicalize(temp_str.as_ref())?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 
@@ -29,7 +47,25 @@ fn test_generic_path_parameter_string() -> std::io::Result<()> {
     let result = soft_canonicalize(temp_string)?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 
@@ -42,7 +78,25 @@ fn test_generic_path_parameter_pathbuf() -> std::io::Result<()> {
     let result = soft_canonicalize(path_buf)?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 
@@ -55,7 +109,25 @@ fn test_generic_path_parameter_pathbuf_ref() -> std::io::Result<()> {
     let result = soft_canonicalize(path_buf)?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 
@@ -68,7 +140,25 @@ fn test_generic_path_parameter_path_ref() -> std::io::Result<()> {
     let result = soft_canonicalize(path_ref)?;
     let expected = fs::canonicalize(temp_dir.path())?;
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }
 
@@ -81,6 +171,26 @@ fn test_generic_path_parameter_str_non_existing() -> std::io::Result<()> {
     let result = soft_canonicalize(non_existing_str)?;
     let expected = fs::canonicalize(temp_dir.path())?.join("non/existing/file.txt");
 
-    assert_eq!(result, expected);
+    #[cfg(not(feature = "dunce"))]
+    {
+        assert_eq!(result, expected, "Without dunce: exact match with std");
+    }
+
+    #[cfg(feature = "dunce")]
+    {
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            let expected_str = expected.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            // Verify path ends correctly
+            assert!(result_str.ends_with(r"non\existing\file.txt"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
+    }
     Ok(())
 }

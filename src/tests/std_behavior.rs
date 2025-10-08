@@ -91,10 +91,31 @@ mod test_std_behavior {
         );
 
         // 4. For existing paths, both should give same result
-        let our_existing = soft_canonicalize(&temp_dir);
-        assert!(our_existing.is_ok());
-        // Both should resolve to the same canonical path
-        assert_eq!(std_result.unwrap(), our_existing.unwrap());
+        let our_existing = soft_canonicalize(&temp_dir).expect("soft_canonicalize existing path");
+        let std_result_path = std_result.unwrap();
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                our_existing, std_result_path,
+                "Without dunce: both should return exact same path"
+            );
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            #[cfg(windows)]
+            {
+                let our_str = our_existing.to_string_lossy();
+                let std_str = std_result_path.to_string_lossy();
+                assert!(!our_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(our_existing, std_result_path);
+            }
+        }
 
         println!("\n=== CONCLUSION ===");
         println!("std::fs::canonicalize REQUIRES ALL path components to exist");

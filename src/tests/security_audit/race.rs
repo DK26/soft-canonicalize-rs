@@ -71,9 +71,13 @@ fn test_toctou_race_condition_prevention() {
     // 2. Providing deterministic resolution that can be safely checked
 
     use crate::soft_canonicalize;
+    use std::env;
 
-    let malicious_path = "../../../etc/passwd";
-    let result = soft_canonicalize(malicious_path);
+    // Use an absolute base to ensure deterministic results regardless of cwd
+    let base = env::temp_dir();
+    let malicious_path = base.join("../../../etc/passwd");
+
+    let result = soft_canonicalize(&malicious_path);
 
     // Should succeed (path resolution is pure)
     assert!(result.is_ok());

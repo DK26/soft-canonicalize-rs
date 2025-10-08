@@ -14,6 +14,7 @@ use crate::symlink::resolve_simple_symlink_chain;
 /// - If a component is a symlink, attempt to resolve its chain; adopt the resolved path only if
 ///   the resolved target or its parent exists (preserves attachment semantics for non-existing suffixes)
 /// - Early-exit when the next component doesn't exist
+#[inline]
 pub(crate) fn compute_existing_prefix(
     root_prefix: &Path,
     components: &[std::ffi::OsString],

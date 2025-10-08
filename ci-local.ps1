@@ -190,8 +190,33 @@ Write-Host ""
 Run-Check "Format Check" "cargo fmt --all -- --check"
 Run-Check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
-Run-Check "Tests (includes compilation)" "cargo test --verbose"
-Run-Check "Tests (all features)" "cargo test --all-features --verbose"
+# Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
+$env:SKIP_PERMISSION_TESTS = "1"
+Run-Check "Tests" "cargo test --verbose"
+
+# Test feature combinations
+Write-Host ""
+Write-Host "🧪 Testing feature combinations explicitly..." -ForegroundColor Cyan
+Write-Host ""
+
+Write-Host "1️⃣  Testing: anchored only" -ForegroundColor Yellow
+& cargo test --features anchored --verbose
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Tests failed for anchored feature" -ForegroundColor Red
+    exit 1
+}
+Write-Host ""
+
+Write-Host "2️⃣  Testing: anchored + dunce (Windows-only feature)" -ForegroundColor Yellow
+& cargo test --features anchored,dunce --verbose
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Tests failed for anchored+dunce features" -ForegroundColor Red
+    exit 1
+}
+Write-Host ""
+
+Write-Host "✅ Both feature combinations passed!" -ForegroundColor Green
+Write-Host ""
 # Doc tests are included in 'cargo test --verbose', so no separate --doc run needed
 $env:RUSTDOCFLAGS = "-D warnings"
 Run-Check "Documentation" "cargo doc --no-deps --document-private-items --all-features"

@@ -24,14 +24,14 @@ mod test_python_inspired {
         let test_result = std::panic::catch_unwind(|| {
             // Only change directory if it exists and is accessible
             if base_path.exists() {
-                env::set_current_dir(base_path).unwrap();
+                if let Ok(()) = env::set_current_dir(base_path) {
+                    let result = soft_canonicalize("non/exist/path.txt");
+                    assert!(result.is_ok());
+                    let resolved = result.unwrap();
+                    assert!(resolved.is_absolute());
+                    assert!(resolved.ends_with("non/exist/path.txt"));
+                }
             }
-
-            let result = soft_canonicalize("non/exist/path.txt");
-            assert!(result.is_ok());
-            let resolved = result.unwrap();
-            assert!(resolved.is_absolute());
-            assert!(resolved.ends_with("non/exist/path.txt"));
         });
 
         // Always try to restore the original directory
@@ -141,13 +141,31 @@ mod test_python_inspired {
             .join("..")
             .join("..")
             .join("target.txt");
+
         let result = soft_canonicalize(basic_traversal);
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        assert_eq!(
-            resolved,
-            fs::canonicalize(base_path).unwrap().join("target.txt")
-        );
+        let expected = fs::canonicalize(base_path).unwrap().join("target.txt");
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(resolved, expected, "Without dunce: exact match");
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            #[cfg(windows)]
+            {
+                let resolved_str = resolved.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!resolved_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(resolved, expected);
+            }
+        }
 
         // Test advanced: Create nested directory structure for complex scenarios
         let dir_a = base_path.join("dirA");
@@ -273,12 +291,29 @@ mod test_python_inspired {
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.is_absolute());
-        assert_eq!(
-            resolved,
-            fs::canonicalize(base_path)
-                .unwrap()
-                .join("a/b/c/d/e/file.txt")
-        );
+        let expected = fs::canonicalize(base_path)
+            .unwrap()
+            .join("a/b/c/d/e/file.txt");
+
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(resolved, expected, "Without dunce: exact match");
+        }
+
+        #[cfg(feature = "dunce")]
+        {
+            #[cfg(windows)]
+            {
+                let resolved_str = resolved.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
+                assert!(!resolved_str.starts_with(r"\\?\"), "dunce should simplify");
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(resolved, expected);
+            }
+        }
 
         // Test advanced: Create a moderately deep existing structure
         let mut current = base_path.to_path_buf();
@@ -371,27 +406,29 @@ mod test_python_inspired {
         let test_result = std::panic::catch_unwind(|| {
             // Only change directory if it exists and is accessible
             if temp_dir.path().exists() {
-                env::set_current_dir(temp_dir.path()).unwrap();
+                if let Ok(()) = env::set_current_dir(temp_dir.path()) {
+                    // Successfully changed directory
+
+                    // Test current directory
+                    let result = soft_canonicalize(".");
+                    assert!(result.is_ok());
+                    let resolved = result.unwrap();
+                    assert!(resolved.is_absolute());
+
+                    // Test parent directory
+                    let result = soft_canonicalize("..");
+                    assert!(result.is_ok());
+                    let resolved = result.unwrap();
+                    assert!(resolved.is_absolute());
+
+                    // Test single file name
+                    let result = soft_canonicalize("single_file.txt");
+                    assert!(result.is_ok());
+                    let resolved = result.unwrap();
+                    assert!(resolved.is_absolute());
+                    assert!(resolved.to_string_lossy().contains("single_file.txt"));
+                }
             }
-
-            // Test current directory
-            let result = soft_canonicalize(".");
-            assert!(result.is_ok());
-            let resolved = result.unwrap();
-            assert!(resolved.is_absolute());
-
-            // Test parent directory
-            let result = soft_canonicalize("..");
-            assert!(result.is_ok());
-            let resolved = result.unwrap();
-            assert!(resolved.is_absolute());
-
-            // Test single file name
-            let result = soft_canonicalize("single_file.txt");
-            assert!(result.is_ok());
-            let resolved = result.unwrap();
-            assert!(resolved.is_absolute());
-            assert!(resolved.to_string_lossy().contains("single_file.txt"));
         });
 
         // Always try to restore the original directory, but don't panic if it fails
@@ -445,19 +482,79 @@ mod test_python_inspired {
             let str_literal = existing_path.to_string_lossy();
             let our_str_result = soft_canonicalize(str_literal.as_ref()).unwrap();
             let std_str_result = fs::canonicalize(str_literal.as_ref()).unwrap();
-            assert_eq!(our_str_result, std_str_result);
+
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert_eq!(our_str_result, std_str_result, "Without dunce: exact match");
+            }
+
+            #[cfg(feature = "dunce")]
+            {
+                #[cfg(windows)]
+                {
+                    let our_str = our_str_result.to_string_lossy();
+                    let std_str = std_str_result.to_string_lossy();
+                    assert!(!our_str.starts_with(r"\\?\"), "dunce should simplify");
+                    assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
+                }
+                #[cfg(not(windows))]
+                {
+                    assert_eq!(our_str_result, std_str_result);
+                }
+            }
 
             // Pattern 2: PathBuf by value
             let pathbuf = existing_path.to_path_buf();
             let our_pathbuf_result = soft_canonicalize(pathbuf.clone()).unwrap();
             let std_pathbuf_result = fs::canonicalize(pathbuf).unwrap();
-            assert_eq!(our_pathbuf_result, std_pathbuf_result);
+
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert_eq!(
+                    our_pathbuf_result, std_pathbuf_result,
+                    "Without dunce: exact match"
+                );
+            }
+
+            #[cfg(feature = "dunce")]
+            {
+                #[cfg(windows)]
+                {
+                    let our_buf_str = our_pathbuf_result.to_string_lossy();
+                    let std_buf_str = std_pathbuf_result.to_string_lossy();
+                    assert!(!our_buf_str.starts_with(r"\\?\"), "dunce should simplify");
+                    assert!(std_buf_str.starts_with(r"\\?\"), "std returns UNC");
+                }
+                #[cfg(not(windows))]
+                {
+                    assert_eq!(our_pathbuf_result, std_pathbuf_result);
+                }
+            }
 
             // Pattern 3: &PathBuf
             let pathbuf = existing_path.to_path_buf();
             let our_ref_result = soft_canonicalize(&pathbuf).unwrap();
             let std_ref_result = fs::canonicalize(&pathbuf).unwrap();
-            assert_eq!(our_ref_result, std_ref_result);
+
+            #[cfg(not(feature = "dunce"))]
+            {
+                assert_eq!(our_ref_result, std_ref_result, "Without dunce: exact match");
+            }
+
+            #[cfg(feature = "dunce")]
+            {
+                #[cfg(windows)]
+                {
+                    let our_ref_str = our_ref_result.to_string_lossy();
+                    let std_ref_str = std_ref_result.to_string_lossy();
+                    assert!(!our_ref_str.starts_with(r"\\?\"), "dunce should simplify");
+                    assert!(std_ref_str.starts_with(r"\\?\"), "std returns UNC");
+                }
+                #[cfg(not(windows))]
+                {
+                    assert_eq!(our_ref_result, std_ref_result);
+                }
+            }
         }
     }
 }
