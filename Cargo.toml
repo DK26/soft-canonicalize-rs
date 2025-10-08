@@ -45,6 +45,10 @@ required-features = ["anchored"]
 name = "security_demo"
 required-features = ["anchored"]
 
+[[example]]
+name = "virtual_filesystem_demo"
+required-features = ["anchored"]
+
 [[bench]]
 name = "performance_comparison"
 harness = false
