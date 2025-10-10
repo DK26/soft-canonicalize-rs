@@ -48,9 +48,9 @@
 //! # fn example() -> Result<(), std::io::Error> {
 //! # #[cfg(windows)]
 //! # {
-//! let p = r"C:\\Users\\user\\documents\\..\\non\\existing\\config.json";
+//! let p = r"C:\Users\user\documents\..\non\existing\config.json";
 //! let result = soft_canonicalize(p)?;
-//! assert!(result.to_string_lossy().starts_with(r"\\\\?\\C:"));
+//! assert!(result.to_string_lossy().starts_with(r"\\?\C:"));
 //! # }
 //! # Ok(())
 //! # }
