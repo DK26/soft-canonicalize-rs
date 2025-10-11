@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.4] - 2025-10-11
 
+### Fixed
+
+- **`anchored_canonicalize`**: Relative symlinks with excessive `..` components are now clamped during resolution instead of relying on caller post-processing
+  - Improves performance by eliminating redundant safety checks
+  - Enforces virtual filesystem semantics at the correct layer (defense-in-depth)
+  - No observable behavior change - final output identical to previous versions
+  - Both absolute and relative symlinks now consistently clamped in `resolve_anchored_symlink_chain`
+- **Windows path prefix comparison bug**: Fixed component-based comparison to properly handle Windows path prefix format differences (`Prefix::VerbatimDisk` vs `Prefix::Disk`)
+  - Previously, symlink clamping could fail when anchor had `\\?\` prefix but resolved symlink didn't (or vice versa)
+  - Added `components_equal_windows_aware` helper that treats `VerbatimDisk(C)` and `Disk(C)` as equivalent
+  - Fixes 3 test failures on GitHub Actions Windows runners with symlink privileges enabled
+
 ### Changed
 
 - Documentation reorganization: "How It Works" and security sections moved lower for better user experience
@@ -17,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - New symlink-first resolution tests for anchored canonicalization, including Windows-compatible coverage
+- Comprehensive test coverage for relative symlink clamping behavior (7 new tests in `anchored_relative_symlink_clamping.rs`)
+- Feature-conditional assertions in Windows tests to properly validate dunce vs non-dunce output formats
 
 ## [0.4.3] - 2025-10-11
 
