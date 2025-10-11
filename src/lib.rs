@@ -13,7 +13,7 @@
 //! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)
 //! - **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries
-//! - **🔒 Robust** - 435 comprehensive tests covering edge cases and security scenarios
+//! - **🔒 Robust** - 445 comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
 //! - **🔧 Zero dependencies** - Optional features may add dependencies
@@ -59,27 +59,6 @@
 //! # }
 //! # Ok::<(), std::io::Error>(())
 //! ```
-//!
-//! ## How It Works
-//!
-//! 1. Input validation (empty path, platform pre-checks)
-//! 2. Convert to absolute path (preserving drive/root semantics)
-//! 3. Fast-path: try `fs::canonicalize` on the original absolute path
-//! 4. Lexically normalize `.` and `..` (streaming, no extra allocations)
-//! 5. Fast-path: try `fs::canonicalize` on the normalized path when different
-//! 6. Validate null bytes (platform-specific)
-//! 7. Discover deepest existing prefix; resolve symlinks inline with cycle detection
-//! 8. Optionally canonicalize the anchor (if symlinks seen) and rebuild
-//! 9. Append non-existing suffix lexically, then normalize if needed
-//! 10. Windows: ensure extended-length prefix for absolute paths
-//! 11. Optional: simplify Windows paths when `dunce` feature enabled
-//!
-//! ## Security Considerations
-//!
-//! - Directory traversal (`..`) resolved lexically before filesystem access
-//! - Symlink chains resolved with cycle detection and depth limits
-//! - Windows NTFS ADS validation performed early and after normalization
-//! - Embedded NUL byte checks on all platforms
 //!
 //! ## Optional Features
 //!
@@ -200,7 +179,7 @@
 //!
 //! ## Testing
 //!
-//! 435 tests including:
+//! 445 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
@@ -226,6 +205,29 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! ## How It Works
+//!
+//! For those interested in the implementation details, here's how `soft_canonicalize` processes paths:
+//!
+//! 1. Input validation (empty path, platform pre-checks)
+//! 2. Convert to absolute path (preserving drive/root semantics)
+//! 3. Fast-path: try `fs::canonicalize` on the original absolute path
+//! 4. Lexically normalize `.` and `..` (fast-path optimization for whole-path existence check)
+//! 5. Fast-path: try `fs::canonicalize` on the normalized path when different
+//! 6. Validate null bytes (platform-specific)
+//! 7. Discover deepest existing prefix with **symlink-first** semantics: resolve symlinks incrementally, then process `.` and `..` relative to resolved targets
+//! 8. Optionally canonicalize the anchor (if symlinks seen) and rebuild
+//! 9. Append non-existing suffix lexically, then normalize if needed
+//! 10. Windows: ensure extended-length prefix for absolute paths
+//! 11. Optional: simplify Windows paths when `dunce` feature enabled
+//!
+//! ## Security Considerations
+//!
+//! - Directory traversal (`..`) uses symlink-first semantics: symlinks are resolved before applying `..`, preventing bypass attacks
+//! - Symlink chains resolved with cycle detection and depth limits
+//! - Windows NTFS ADS validation performed early and after normalization
+//! - Embedded NUL byte checks on all platforms
 
 mod error;
 mod normalize;
@@ -773,6 +775,8 @@ mod tests {
 
     #[cfg(feature = "anchored")]
     mod anchored_canonicalize;
+    #[cfg(feature = "anchored")]
+    mod anchored_relative_symlink_clamping;
     #[cfg(feature = "anchored")]
     mod anchored_security;
     #[cfg(feature = "anchored")]

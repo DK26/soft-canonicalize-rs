@@ -168,18 +168,86 @@ pub(crate) fn resolve_anchored_symlink_chain(
                         current = anchor.join(stripped);
                     }
                 } else {
-                    // Relative symlink: resolve from parent as normal
+                    // Relative symlink: resolve from parent, then clamp to anchor
+                    // Virtual filesystem semantics: relative symlinks are resolved as if
+                    // the anchor is the root - they cannot escape the anchor boundary
                     let parent = current.parent();
                     if let Some(p) = parent {
                         current = simple_normalize_path(&p.join(target));
+
+                        // CLAMP: Ensure relative symlink resolution stays within anchor
+                        // If the resolved path escapes the anchor, clamp it back using common ancestor logic
+                        //
+                        // Use component-based comparison to handle Windows prefix format differences
+                        // (\\?\ vs normal paths) - components() normalizes these away
+                        let anchor_comps: Vec<_> = anchor.components().collect();
+                        let current_comps: Vec<_> = current.components().collect();
+
+                        // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
+                        #[cfg(windows)]
+                        let components_equal = |a: &std::path::Component,
+                                                b: &std::path::Component|
+                         -> bool {
+                            use std::path::{Component, Prefix};
+                            match (a, b) {
+                                (Component::Prefix(ap), Component::Prefix(bp)) => {
+                                    // Treat VerbatimDisk and Disk as equivalent if same drive letter
+                                    match (ap.kind(), bp.kind()) {
+                                        (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
+                                        | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::Disk(ad), Prefix::Disk(bd)) => ad == bd,
+                                        _ => ap == bp, // Other prefix types must match exactly
+                                    }
+                                }
+                                _ => a == b, // Non-prefix components must match exactly
+                            }
+                        };
+                        #[cfg(not(windows))]
+                        let components_equal =
+                            |a: &std::path::Component, b: &std::path::Component| a == b;
+
+                        // Check if current path is within anchor by comparing components
+                        let is_within_anchor = current_comps.len() >= anchor_comps.len()
+                            && current_comps
+                                .iter()
+                                .zip(anchor_comps.iter())
+                                .all(|(c, a)| components_equal(c, a));
+
+                        #[cfg_attr(not(windows), allow(unused_variables))]
+                        let was_clamped = if !is_within_anchor {
+                            // Find longest common prefix by comparing components
+                            let mut common_depth = 0;
+                            for (a, c) in anchor_comps.iter().zip(current_comps.iter()) {
+                                if components_equal(a, c) {
+                                    common_depth += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            // Build clamped path: anchor + (current components after common prefix)
+                            let mut clamped = anchor.to_path_buf();
+                            for comp in current_comps.iter().skip(common_depth) {
+                                clamped.push(comp);
+                            }
+                            current = clamped;
+                            true // Mark that we clamped
+                        } else {
+                            false // No clamping needed
+                        };
 
                         // FIX: Re-canonicalize on Windows to ensure:
                         // 1. Prefix format consistency (\\?\ vs regular paths)
                         // 2. 8.3 short names are expanded to full names
                         // This is critical because simple_normalize_path only handles . and ..,
                         // but doesn't expand short names like RUNNER~1 -> runneradmin
+                        //
+                        // IMPORTANT: Only re-canonicalize if we didn't clamp. If we clamped,
+                        // the path is a virtual path within the anchor and should NOT be
+                        // resolved to a real system path.
                         #[cfg(windows)]
-                        if current.exists() {
+                        if !was_clamped && current.exists() {
                             use std::path::Prefix;
 
                             // Check if anchor has extended-length prefix (\\?\)
