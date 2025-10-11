@@ -28,6 +28,8 @@
 //! ### Basic Example
 //!
 //! ```rust
+//! # #[cfg(windows)]
+//! # {
 //! use soft_canonicalize::soft_canonicalize;
 //! use std::path::PathBuf;
 //!
@@ -54,6 +56,7 @@
 //!     result.unwrap().to_string_lossy(),
 //!     r"C:\Users\user\non\existing\config.json"
 //! );
+//! # }
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
