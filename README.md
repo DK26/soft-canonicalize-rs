@@ -13,7 +13,7 @@ Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`
 ## Why Use This?
 
 **🚀 Works with non-existing paths** - Plan file locations before creating them  
-**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.3x (9,907 paths/s), Linux ~1.9x (238,038 paths/s) faster than Python's pathlib  
+**⚡ Fast** - Mixed workload median performance (5-run protocol): Windows ~1.8x (13,840 paths/s), Linux ~3.0x (379,119 paths/s) faster than Python's pathlib  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)  
 **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries  
 **🔒 Robust** - 445 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
