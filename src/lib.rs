@@ -11,8 +11,9 @@
 //!
 //! - **🚀 Works with non-existing paths** - Plan file locations before creating them
 //! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
-//! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths
-//! - **🔒 Robust** - 436 comprehensive tests covering edge cases and security scenarios
+//! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)
+//! - **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries
+//! - **🔒 Robust** - 435 comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
 //! - **🔧 Zero dependencies** - Optional features may add dependencies
@@ -24,36 +25,36 @@
 //! soft-canonicalize = "0.4"
 //! ```
 //!
-//! ### Cross-Platform Example
+//! ### Basic Example
 //!
 //! ```rust
 //! use soft_canonicalize::soft_canonicalize;
+//! use std::path::PathBuf;
 //!
-//! // Existing path behaves like std::fs::canonicalize
-//! let existing = soft_canonicalize(&std::env::temp_dir())?;
-//! # let _ = existing;
+//! let non_existing_path = r"C:\Users\user\documents\..\non\existing\config.json";
 //!
-//! // Also works when suffixes don't exist yet
-//! let non_existing = soft_canonicalize(
-//!     std::env::temp_dir().join("some/deep/non/existing/path.txt")
-//! )?;
-//! # let _ = non_existing;
+//! // Using Rust's own std canonicalize function:
+//! let result = std::fs::canonicalize(non_existing_path);
+//! assert!(result.is_err());
+//!
+//! // Using our crate's function:
+//! let result = soft_canonicalize(non_existing_path);
+//! assert!(result.is_ok());
+//!
+//! // Shows the UNC path conversion and path normalization
+//! # #[cfg(not(feature = "dunce"))]
+//! assert_eq!(
+//!     result.unwrap().to_string_lossy(),
+//!     r"\\?\C:\Users\user\non\existing\config.json"
+//! );
+//!
+//! // With `dunce` feature enabled, paths are simplified when safe
+//! # #[cfg(feature = "dunce")]
+//! assert_eq!(
+//!     result.unwrap().to_string_lossy(),
+//!     r"C:\Users\user\non\existing\config.json"
+//! );
 //! # Ok::<(), std::io::Error>(())
-//! ```
-//!
-//! ### Windows Example (UNC/extended-length)
-//!
-//! ```rust
-//! use soft_canonicalize::soft_canonicalize;
-//! # fn example() -> Result<(), std::io::Error> {
-//! # #[cfg(windows)]
-//! # {
-//! let p = r"C:\Users\user\documents\..\non\existing\config.json";
-//! let result = soft_canonicalize(p)?;
-//! assert!(result.to_string_lossy().starts_with(r"\\?\C:"));
-//! # }
-//! # Ok(())
-//! # }
 //! ```
 //!
 //! ## How It Works
@@ -68,6 +69,7 @@
 //! 8. Optionally canonicalize the anchor (if symlinks seen) and rebuild
 //! 9. Append non-existing suffix lexically, then normalize if needed
 //! 10. Windows: ensure extended-length prefix for absolute paths
+//! 11. Optional: simplify Windows paths when `dunce` feature enabled
 //!
 //! ## Security Considerations
 //!
@@ -195,7 +197,7 @@
 //!
 //! ## Testing
 //!
-//! 436 tests including:
+//! 435 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
