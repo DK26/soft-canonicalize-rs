@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2025-10-11
+
+### Added
+
+- **Documentation discoverability improvements**
+  - Added `#[doc(alias)]` attributes to improve API discoverability:
+    - `soft_canonicalize`: aliases for `realpath`, `canonicalize`, `resolve`, `absolute`
+    - `anchored_canonicalize`: aliases for `chroot`, `jail`, `sandbox`, `virtual_root`
+    - `MAX_SYMLINK_DEPTH`: aliases for `ELOOP`, `symlink_limit`
+  - Added `#[must_use]` attributes to `soft_canonicalize` and `anchored_canonicalize` to prevent accidental result dropping
+
+### Changed
+
+- **Documentation enhancements**
+  - Enhanced "Why Use This?" section to mention `dunce` feature in compatibility bullet point
+  - Enhanced "Why Use This?" section to highlight `anchored` feature for virtual filesystem support
+  - Fixed cross-platform doctest compatibility by adding `#[cfg(windows)]` to Windows-specific Basic Example
+
+### Fixed
+
+- Fixed raw string escaping in doc comments and test examples ([#34](https://github.com/DK26/soft-canonicalize-rs/pull/34))
+
 ## [0.4.2] - 2025-10-08
 
 ### Added

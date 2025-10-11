@@ -1,3 +1,13 @@
+//! Basic usage examples demonstrating soft_canonicalize with various path types.
+//!
+//! Run with: cargo run --example basic_usage
+//!
+//! This example shows:
+//! - Existing paths (matches std::fs::canonicalize)
+//! - Non-existing paths (extends beyond std behavior)
+//! - Relative paths (converted to absolute)
+//! - Directory traversal (.. and . resolved)
+
 use soft_canonicalize::soft_canonicalize;
 use std::path::Path;
 

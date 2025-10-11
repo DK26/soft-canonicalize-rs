@@ -194,8 +194,8 @@ fn test_windows_short_name_bypass() -> std::io::Result<()> {
 fn test_windows_device_name_bypass() -> std::io::Result<()> {
     // These paths should be handled correctly and not cause panics.
     let device_paths = vec![
-        r"\\.\\C:\\windows\\system32\\kernel32.dll",
-        r"\\\\?\\C:\\windows\\system32\\kernel32.dll",
+        r"\\.\C:\windows\system32\kernel32.dll",
+        r"\\?\C:\windows\system32\kernel32.dll",
         "CON",
         "NUL",
         "COM1",
