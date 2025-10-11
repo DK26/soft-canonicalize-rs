@@ -65,10 +65,10 @@
 //! 1. Input validation (empty path, platform pre-checks)
 //! 2. Convert to absolute path (preserving drive/root semantics)
 //! 3. Fast-path: try `fs::canonicalize` on the original absolute path
-//! 4. Lexically normalize `.` and `..` (streaming, no extra allocations)
+//! 4. Lexically normalize `.` and `..` (fast-path optimization for whole-path existence check)
 //! 5. Fast-path: try `fs::canonicalize` on the normalized path when different
 //! 6. Validate null bytes (platform-specific)
-//! 7. Discover deepest existing prefix; resolve symlinks inline with cycle detection
+//! 7. Discover deepest existing prefix with **symlink-first** semantics: resolve symlinks incrementally, then process `.` and `..` relative to resolved targets
 //! 8. Optionally canonicalize the anchor (if symlinks seen) and rebuild
 //! 9. Append non-existing suffix lexically, then normalize if needed
 //! 10. Windows: ensure extended-length prefix for absolute paths
@@ -76,7 +76,7 @@
 //!
 //! ## Security Considerations
 //!
-//! - Directory traversal (`..`) resolved lexically before filesystem access
+//! - Directory traversal (`..`) uses symlink-first semantics: symlinks are resolved before applying `..`, preventing bypass attacks
 //! - Symlink chains resolved with cycle detection and depth limits
 //! - Windows NTFS ADS validation performed early and after normalization
 //! - Embedded NUL byte checks on all platforms
