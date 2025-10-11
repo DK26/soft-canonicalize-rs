@@ -521,18 +521,22 @@ fn test_windows_lexical_symlink_first_verification() {
     fs::create_dir_all(&anchor).unwrap();
     let abs_anchor = crate::soft_canonicalize(&anchor).unwrap();
 
-    // Create directory structure (without symlinks initially)
+    // Create directory structure
     let home_dir = abs_anchor.join("home");
     let opt_subdir = abs_anchor.join("opt\\subdir");
     let special_target = opt_subdir.join("special");
 
     fs::create_dir_all(&home_dir).unwrap();
-    fs::create_dir_all(&special_target).unwrap();
+    fs::create_dir_all(special_target).unwrap();
 
+    // Create symlink using RELATIVE path
+    // From jail/home/special, we need to go up to jail, then to opt/subdir/special
+    // Path: home/special -> ../opt/subdir/special (up one level from home, then to opt/subdir/special)
     let symlink_path = home_dir.join("special");
+    let relative_target = r"..\opt\subdir\special";
 
     // Try to create symlink; skip gracefully if we lack permissions
-    match symlink_dir(&special_target, symlink_path) {
+    match symlink_dir(relative_target, symlink_path) {
         Ok(_) => {
             // Symlink created successfully - run the full test
             let result =
