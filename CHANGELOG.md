@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2025-10-11
+
+### Changed
+
+- Documentation reorganization: "How It Works" and security sections moved lower for better user experience
+- Improved discoverability and clarity of advanced implementation details
+
+### Added
+
+- New symlink-first resolution tests for anchored canonicalization, including Windows-compatible coverage
+
 ## [0.4.3] - 2025-10-11
 
 ### Added
