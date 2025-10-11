@@ -9,6 +9,8 @@ use crate::normalize::simple_normalize_path;
 /// - Linux: ELOOP limit is typically 40
 /// - Windows: Similar limit around 63
 /// - Other Unix systems: Usually 32-40
+#[doc(alias = "ELOOP")]
+#[doc(alias = "symlink_limit")]
 pub const MAX_SYMLINK_DEPTH: usize = if cfg!(target_os = "windows") { 63 } else { 40 };
 
 /// Strip root prefix from an absolute path to make it relative.

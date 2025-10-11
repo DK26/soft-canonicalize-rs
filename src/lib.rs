@@ -300,6 +300,11 @@ fn reject_nul_bytes(p: &Path) -> io::Result<()> {
 /// - Unix: Returns standard absolute paths (`/foo`) - no change
 ///
 /// See the [module documentation](crate#optional-features) for details on the `dunce` feature.
+#[must_use = "this function returns a new PathBuf without modifying the input"]
+#[doc(alias = "realpath")]
+#[doc(alias = "canonicalize")]
+#[doc(alias = "resolve")]
+#[doc(alias = "absolute")]
 pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path = path.as_ref();
 
@@ -617,6 +622,11 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 /// # #[cfg(unix)]
 /// # demo().unwrap();
 /// ```
+#[must_use = "this function returns a new PathBuf without modifying the input"]
+#[doc(alias = "chroot")]
+#[doc(alias = "jail")]
+#[doc(alias = "sandbox")]
+#[doc(alias = "virtual_root")]
 #[cfg(feature = "anchored")]
 #[cfg_attr(docsrs, doc(cfg(feature = "anchored")))]
 pub fn anchored_canonicalize(
