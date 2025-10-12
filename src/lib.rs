@@ -3,9 +3,9 @@
 //! **Path canonicalization that works with non-existing paths.**
 //!
 //! Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`, providing
-//! the same functionality as Unix `realpath()` and `std::fs::canonicalize` but extended to handle
-//! non-existing paths, with optional features for simplified Windows output (`dunce`) and virtual
-//! filesystem semantics (`anchored`).
+//! the same functionality as `std::fs::canonicalize` (Rust's equivalent to Unix `realpath()`)
+//! but extended to handle non-existing paths, with optional features for simplified Windows
+//! output (`dunce`) and virtual filesystem semantics (`anchored`).
 //!
 //! ## Why Use This?
 //!
@@ -16,7 +16,39 @@
 //! - **🔒 Robust** - 445 comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
-//! - **🔧 Zero dependencies** - Optional features may add dependencies
+//! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
+//!
+//! ## Lexical vs. Filesystem-Based Resolution
+//!
+//! Path resolution libraries fall into two categories:
+//!
+//! **Lexical Resolution** (no I/O):
+//! - **Performance**: Fast - no filesystem access
+//! - **Accuracy**: Incorrect if symlinks are present (doesn't resolve them)
+//! - **Use when**: You're 100% certain no symlinks exist and need maximum performance
+//! - **Examples**: `std::path::absolute`, `normpath::normalize`
+//!
+//! **Filesystem-Based Resolution** (performs I/O):
+//! - **Performance**: Slower - requires filesystem syscalls to resolve symlinks
+//! - **Accuracy**: Correct - follows symlinks to their targets
+//! - **Use when**: Safety is priority over performance, or symlinks may be present
+//! - **Examples**: `std::fs::canonicalize`, `soft_canonicalize`, `dunce::canonicalize`
+//!
+//! **Rule of thumb**: If you cannot guarantee symlinks won't be introduced, or if correctness is critical, use filesystem-based resolution.
+//!
+//! ## Use Cases
+//!
+//! ### Path Comparison
+//!
+//! - **Equality**: Determine if two different path strings point to the same location
+//! - **Containment**: Check if one path is inside another directory
+//!
+//! ### Common Applications
+//!
+//! - **Build Systems**: Resolve output paths during build planning before directories exist
+//! - **Configuration Validation**: Ensure user-provided paths stay within allowed boundaries
+//! - **Deduplication**: Detect when different path strings refer to the same planned location
+//! - **Cross-Platform Normalization**: Handle Windows UNC paths and symlinks consistently
 //!
 //! ## Quick Start
 //!
@@ -31,7 +63,6 @@
 //! # #[cfg(windows)]
 //! # {
 //! use soft_canonicalize::soft_canonicalize;
-//! use std::path::PathBuf;
 //!
 //! let non_existing_path = r"C:\Users\user\documents\..\non\existing\config.json";
 //!
@@ -118,10 +149,6 @@
 //!
 //! ### Simplified Path Output (`dunce` feature, Windows-only)
 //!
-//! > **Windows-specific feature**: The `dunce` feature only affects Windows platforms. On
-//! > Unix/Linux/macOS, it has no effect and adds no runtime dependencies (configured as a
-//! > target-conditional dependency in `Cargo.toml`).
-//!
 //! By default, `soft_canonicalize` returns Windows paths in extended-length UNC format
 //! (`\\?\C:\foo`) for maximum robustness and compatibility with long paths, reserved names,
 //! and other Windows filesystem edge cases.
@@ -167,8 +194,22 @@
 //! - Automatically keeps UNC for paths with trailing spaces/dots
 //! - Automatically keeps UNC for paths containing `..` (literal interpretation)
 //!
-//! All security validations remain unchanged - only the final output format is simplified when
-//! possible.
+//! ## Security & CVE Coverage
+//!
+//! Security does not depend on enabling features. The core API is secure-by-default; the optional
+//! `anchored` feature is a convenience for virtual roots. We test all modes (no features;
+//! `--features anchored`; `--features anchored,dunce`).
+//!
+//! **Built-in protections include:**
+//! - **NTFS Alternate Data Stream (ADS) validation** - Blocks malicious stream placements and traversal attempts
+//! - **Symlink cycle detection** - Bounded depth tracking prevents infinite loops
+//! - **Path traversal clamping** - Never ascends past root/share/device boundaries
+//! - **Null byte rejection** - Early validation prevents injection attacks
+//! - **UNC/device semantics** - Preserves Windows extended-length and device namespace integrity
+//! - **TOCTOU race resistance** - Tested against time-of-check-time-of-use attacks
+//!
+//! See [`docs/SECURITY.md`](https://github.com/DK26/soft-canonicalize-rs/blob/dev/docs/SECURITY.md)
+//! for detailed analysis, attack scenarios, and test references.
 //!
 //! ## Cross-Platform Notes
 //!
@@ -221,13 +262,6 @@
 //! 9. Append non-existing suffix lexically, then normalize if needed
 //! 10. Windows: ensure extended-length prefix for absolute paths
 //! 11. Optional: simplify Windows paths when `dunce` feature enabled
-//!
-//! ## Security Considerations
-//!
-//! - Directory traversal (`..`) uses symlink-first semantics: symlinks are resolved before applying `..`, preventing bypass attacks
-//! - Symlink chains resolved with cycle detection and depth limits
-//! - Windows NTFS ADS validation performed early and after normalization
-//! - Embedded NUL byte checks on all platforms
 
 mod error;
 mod normalize;
