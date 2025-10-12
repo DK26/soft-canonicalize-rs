@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2025-10-12
+
+### Changed
+
+- **Documentation improvements and reorganization** ([#40](https://github.com/DK26/soft-canonicalize-rs/issues/40))
+  - **Clarified `realpath()` terminology**: Mentioned once that `std::fs::canonicalize` is Rust's equivalent to Unix `realpath()`, then consistently used `std::fs::canonicalize` throughout to avoid confusion (Rust doesn't have a `realpath()` function)
+  - **Streamlined comparison table**: Removed `realpath()` from "Comparison with Alternatives" table to focus exclusively on Rust crates and std functions (`std::fs::canonicalize`, `std::path::absolute`, `dunce::canonicalize`)
+  - Added MSRV badge to README.md
+  - Added comprehensive "Lexical vs. Filesystem-Based Resolution" section explaining the difference between I/O-based and lexical path resolution approaches with practical guidance
+  - Added "Use Cases" section with practical examples (Path Comparison, Build Systems, Configuration Validation, Deduplication, Cross-Platform Normalization)
+  - Streamlined optional features documentation (removed redundant Windows-specific notes that are now clear from target-conditional dependency)
+  - Added "Related Projects" section highlighting `strict-path` integration
+  - Enhanced "Security & CVE Coverage" section with bullet-point list of built-in protections (ADS validation, symlink cycle detection, path traversal clamping, null byte rejection, UNC/device semantics, TOCTOU race resistance)
+  - Moved security content higher in README for better visibility
+  - Removed redundant "What is Path Canonicalization?" section (concepts integrated into other sections)
+  - Removed unnecessary `use std::path::PathBuf;` import from Basic Example doctest
+  - Better structured documentation flow focusing on user needs first, then implementation details
+
 ## [0.4.4] - 2025-10-11
 
 ### Fixed
