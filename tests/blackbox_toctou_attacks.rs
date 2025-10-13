@@ -22,10 +22,34 @@ fn tmpdir() -> TempDir {
 fn got_symlink_permission(tmpdir: &TempDir) -> bool {
     #[cfg(windows)]
     {
-        let link = tmpdir.path().join("symlink_test");
-        let target = tmpdir.path().join("target");
-        let _ = fs::File::create(&target);
-        std::os::windows::fs::symlink_file(&target, link).is_ok()
+        // Prefer a directory link check (with junction fallback) as these tests
+        // manipulate directories, not files.
+        let link = tmpdir.path().join("perm_test_link");
+        let target = tmpdir.path().join("perm_test_target");
+        let _ = fs::create_dir(&target);
+
+        match std::os::windows::fs::symlink_dir(&target, &link) {
+            Ok(_) => {
+                let _ = fs::remove_dir(&link);
+                true
+            }
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(1314)
+                {
+                    // Try junction as a fallback signal
+                    match junction::create(&target, &link) {
+                        Ok(_) => {
+                            let _ = fs::remove_dir(&link);
+                            true
+                        }
+                        Err(_) => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
     }
     #[cfg(not(windows))]
     {
@@ -37,9 +61,30 @@ fn got_symlink_permission(tmpdir: &TempDir) -> bool {
 /// Helper to create directory symlinks in a cross-platform way
 fn symlink_dir(original: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
-    return std::os::windows::fs::symlink_dir(original, link);
+    {
+        match std::os::windows::fs::symlink_dir(original, link) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(1314)
+                {
+                    match junction::create(original, link) {
+                        Ok(_) => Ok(()),
+                        Err(je) => Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("junction fallback failed: {je}"),
+                        )),
+                    }
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
     #[cfg(not(windows))]
-    return std::os::unix::fs::symlink(original, link);
+    {
+        std::os::unix::fs::symlink(original, link)
+    }
 }
 
 /// This test creates a TOCTOU race condition where a directory component of a path

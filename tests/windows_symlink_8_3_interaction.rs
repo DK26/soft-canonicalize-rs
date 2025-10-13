@@ -11,6 +11,9 @@
 //! 4. 8.3 name component before a symlink
 //! 5. Mixed existing/non-existing with symlinks and 8.3 patterns
 
+// Import shared test helpers (must be at crate root level for integration tests)
+mod test_helpers;
+
 #[cfg(windows)]
 mod windows_symlink_8_3_tests {
     use soft_canonicalize::soft_canonicalize;
@@ -19,12 +22,16 @@ mod windows_symlink_8_3_tests {
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    /// Helper to create a symlink, skipping test if permissions are insufficient
+    // Use the symlink helper from test utilities
+    use crate::test_helpers::symlink_or_junction::create_symlink_or_junction;
+
+    /// Helper to create a symlink with junction fallback
+    /// Returns Ok(true) if link created, Ok(false) if skipped (both symlink and junction failed)
     fn try_create_symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(
         original: P,
         link: Q,
-    ) -> io::Result<()> {
-        std::os::windows::fs::symlink_dir(original, link)
+    ) -> io::Result<bool> {
+        create_symlink_or_junction(original, link)
     }
 
     /// Get the actual Windows 8.3 short path name for a given path using FFI.
@@ -131,15 +138,13 @@ mod windows_symlink_8_3_tests {
             return Ok(());
         }
 
-        // Create a symlink pointing to the SHORT NAME directory
+        // Create a symlink (or junction fallback) pointing to the SHORT NAME directory
         let link_path = base.join("mylink");
         match try_create_symlink_dir(&short_target, &link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
-                eprintln!("Skipping test_symlink_first_component_to_8_3_path: insufficient permissions for symlink");
+            Ok(true) => {} // Link created successfully
+            Ok(false) => {
+                // Both symlink and junction failed - skip test
+                eprintln!("Skipping test_symlink_first_component_to_8_3_path: no symlink/junction support");
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -214,16 +219,13 @@ mod windows_symlink_8_3_tests {
         let target_dir = base.join("target_dir");
         fs::create_dir(&target_dir)?;
 
-        // Create symlink
+        // Create symlink (or junction fallback)
         let link_path = base.join("mylink");
         match try_create_symlink_dir(&target_dir, &link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
+            Ok(true) => {} // Link created
+            Ok(false) => {
                 eprintln!(
-                    "Skipping test_symlink_with_nonexisting_8_3_suffix: insufficient permissions"
+                    "Skipping test_symlink_with_nonexisting_8_3_suffix: no symlink/junction support"
                 );
                 return Ok(());
             }
@@ -311,13 +313,10 @@ mod windows_symlink_8_3_tests {
         // Create intermediate target
         let intermediate = base.join("intermediate");
         match try_create_symlink_dir(&final_target, &intermediate) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
+            Ok(true) => {}
+            Ok(false) => {
                 eprintln!(
-                    "Skipping test_chained_symlinks_with_8_3_target: insufficient permissions"
+                    "Skipping test_chained_symlinks_with_8_3_target: no symlink/junction support"
                 );
                 return Ok(());
             }
@@ -326,14 +325,15 @@ mod windows_symlink_8_3_tests {
 
         // Create first symlink pointing to intermediate
         let first_link = base.join("first_link");
-        if let Err(e) = try_create_symlink_dir(&intermediate, &first_link) {
-            if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
+        match try_create_symlink_dir(&intermediate, &first_link) {
+            Ok(true) => {}
+            Ok(false) => {
                 eprintln!(
-                    "Skipping test_chained_symlinks_with_8_3_target: insufficient permissions"
+                    "Skipping test_chained_symlinks_with_8_3_target: no symlink/junction support"
                 );
                 return Ok(());
             }
-            return Err(e);
+            Err(e) => return Err(e),
         }
 
         // Test path through the chain with non-existing suffix
@@ -354,21 +354,23 @@ mod windows_symlink_8_3_tests {
             );
             #[cfg(not(feature = "dunce"))]
             {
-                assert!(
-                    result.starts_with(&std_canon),
-                    "Result should start with properly canonicalized existing portion"
+                let expected = std_canon.join("file.txt");
+                assert_eq!(
+                    result, expected,
+                    "Result must equal std(existing)+tail for non-existing suffix"
                 );
             }
             #[cfg(feature = "dunce")]
             {
+                let expected = std_canon.join("file.txt");
                 let result_check = result.to_string_lossy();
-                let std_str = std_canon.to_string_lossy();
+                let expected_str = expected.to_string_lossy();
                 assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-                let std_simplified = std_str.trim_start_matches(r"\\?\");
-                assert!(
-                    result_check.starts_with(std_simplified),
-                    "Result should start with properly canonicalized existing portion"
+                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+                let expected_simplified = expected_str.trim_start_matches(r"\\?\");
+                assert_eq!(
+                    result_check, expected_simplified,
+                    "Result must equal std(existing)+tail (simplified)"
                 );
             }
 
@@ -409,12 +411,11 @@ mod windows_symlink_8_3_tests {
         // Create symlink inside the 8.3-like directory
         let link_path = eight_three_dir.join("mylink");
         match try_create_symlink_dir(&target_dir, link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
-                eprintln!("Skipping test_8_3_component_before_symlink: insufficient permissions");
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!(
+                    "Skipping test_8_3_component_before_symlink: no symlink/junction support"
+                );
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -484,13 +485,10 @@ mod windows_symlink_8_3_tests {
         // Create symlink
         let link_path = target_dir.join("mylink");
         match try_create_symlink_dir(&long_name_dir, link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
+            Ok(true) => {}
+            Ok(false) => {
                 eprintln!(
-                    "Skipping test_real_8_3_expansion_after_symlink: insufficient permissions"
+                    "Skipping test_real_8_3_expansion_after_symlink: no symlink/junction support"
                 );
                 return Ok(());
             }
@@ -560,12 +558,9 @@ mod windows_symlink_8_3_tests {
         // Create symlink in first directory pointing to target
         let link_path = first_83.join("mylink");
         match try_create_symlink_dir(&target_83, link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
-                eprintln!("Skipping test_8_3_around_symlink: insufficient permissions");
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!("Skipping test_8_3_around_symlink: no symlink/junction support");
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -667,13 +662,10 @@ mod windows_symlink_8_3_tests {
         // Create symlink in 8.3-named directory
         let link_path = dir_83.join("mylink");
         match try_create_symlink_dir(&target, link_path) {
-            Ok(_) => {}
-            Err(e)
-                if e.kind() == io::ErrorKind::PermissionDenied
-                    || e.raw_os_error() == Some(1314) =>
-            {
+            Ok(true) => {}
+            Ok(false) => {
                 eprintln!(
-                    "Skipping test_std_parity_symlink_and_8_3_existing: insufficient permissions"
+                    "Skipping test_std_parity_symlink_and_8_3_existing: no symlink/junction support"
                 );
                 return Ok(());
             }

@@ -47,9 +47,30 @@ fn symlink_file(original: &Path, link: &Path) -> std::io::Result<()> {
 /// Helper to create directory symlinks in a cross-platform way
 fn symlink_dir(original: &Path, link: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
-    return std::os::windows::fs::symlink_dir(original, link);
+    {
+        match std::os::windows::fs::symlink_dir(original, link) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(1314)
+                {
+                    match junction::create(original, link) {
+                        Ok(_) => Ok(()),
+                        Err(je) => Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("junction fallback failed: {je}"),
+                        )),
+                    }
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
     #[cfg(not(windows))]
-    return std::os::unix::fs::symlink(original, link);
+    {
+        std::os::unix::fs::symlink(original, link)
+    }
 }
 
 /// Test that soft_canonicalize behaves like std canonicalize for existing files
@@ -124,18 +145,26 @@ fn soft_canonicalize_nonexisting() {
     // WITH dunce: Simplified format
     #[cfg(feature = "dunce")]
     {
-        let result_str = result.to_string_lossy();
-        assert!(
-            !result_str.starts_with(r"\\?\"),
-            "dunce should simplify non-existing paths"
-        );
         let expected = tmpdir_canonical_all.join("does_not_exist.txt");
-        let expected_str = expected.to_string_lossy();
-        assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(
-            result_str.as_ref(),
-            expected_str.trim_start_matches(r"\\?\")
-        );
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            assert!(
+                !result_str.starts_with(r"\\?\"),
+                "dunce should simplify non-existing paths"
+            );
+            let expected_str = expected.to_string_lossy();
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(
+                result_str.as_ref(),
+                expected_str.trim_start_matches(r"\\?\")
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            // On non-Windows, dunce has no effect; exact equality holds
+            assert_eq!(result, expected);
+        }
     }
 
     // Non-existing directory
@@ -150,15 +179,22 @@ fn soft_canonicalize_nonexisting() {
 
     #[cfg(feature = "dunce")]
     {
-        let result2_str = result2.to_string_lossy();
-        assert!(!result2_str.starts_with(r"\\?\"), "dunce should simplify");
         let expected2 = tmpdir_canonical_all.join("missing_dir").join("file.txt");
-        let expected2_str = expected2.to_string_lossy();
-        assert!(expected2_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(
-            result2_str.as_ref(),
-            expected2_str.trim_start_matches(r"\\?\")
-        );
+        #[cfg(windows)]
+        {
+            let result2_str = result2.to_string_lossy();
+            assert!(!result2_str.starts_with(r"\\?\"), "dunce should simplify");
+            let expected2_str = expected2.to_string_lossy();
+            assert!(expected2_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(
+                result2_str.as_ref(),
+                expected2_str.trim_start_matches(r"\\?\")
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result2, expected2);
+        }
     }
 
     // Std canonicalize should fail for these
@@ -462,19 +498,26 @@ fn soft_canonicalize_dots() {
 
     #[cfg(feature = "dunce")]
     {
-        let result_str = result.to_string_lossy();
-        assert!(
-            !result_str.starts_with(r"\\?\"),
-            "dunce should simplify non-existing"
-        );
         let tmpdir_canonical = fs::canonicalize(tmpdir.path()).unwrap();
         let expected = tmpdir_canonical.join("a").join("c").join("test.txt");
-        let expected_str = expected.to_string_lossy();
-        assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(
-            result_str.as_ref(),
-            expected_str.trim_start_matches(r"\\?\")
-        );
+        #[cfg(windows)]
+        {
+            let result_str = result.to_string_lossy();
+            assert!(
+                !result_str.starts_with(r"\\?\"),
+                "dunce should simplify non-existing"
+            );
+            let expected_str = expected.to_string_lossy();
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(
+                result_str.as_ref(),
+                expected_str.trim_start_matches(r"\\?\")
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(result, expected);
+        }
     }
 }
 
@@ -536,18 +579,25 @@ fn soft_canonicalize_absolute_relative() {
 
     #[cfg(feature = "dunce")]
     {
-        let result_str = relative_nonexisting.to_string_lossy();
-        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
         let expected = fs::canonicalize(tmpdir.path())
             .unwrap()
             .join("subdir")
             .join("nonexisting.txt");
-        let expected_str = expected.to_string_lossy();
-        assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(
-            result_str.as_ref(),
-            expected_str.trim_start_matches(r"\\?\")
-        );
+        #[cfg(windows)]
+        {
+            let result_str = relative_nonexisting.to_string_lossy();
+            assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
+            let expected_str = expected.to_string_lossy();
+            assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
+            assert_eq!(
+                result_str.as_ref(),
+                expected_str.trim_start_matches(r"\\?\")
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(relative_nonexisting, expected);
+        }
     }
 
     std::env::set_current_dir(original_cwd).unwrap();

@@ -258,15 +258,23 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
                             {
                                 let canonical_str = canonical.to_string_lossy();
                                 let target_str = canonical_target.to_string_lossy();
-                                assert!(
-                                    !canonical_str.starts_with(r"\\?\"),
-                                    "dunce should simplify"
-                                );
-                                assert!(target_str.starts_with(r"\\?\"), "std returns UNC");
-                                assert_eq!(
-                                    canonical_str.as_ref(),
-                                    target_str.trim_start_matches(r"\\?\")
-                                );
+                                #[cfg(windows)]
+                                {
+                                    assert!(
+                                        !canonical_str.starts_with(r"\\?\"),
+                                        "dunce should simplify"
+                                    );
+                                    assert!(target_str.starts_with(r"\\?\"), "std returns UNC");
+                                    assert_eq!(
+                                        canonical_str.as_ref(),
+                                        target_str.trim_start_matches(r"\\?\")
+                                    );
+                                }
+                                #[cfg(not(windows))]
+                                {
+                                    // On non-Windows, dunce has no effect; paths must be equal
+                                    assert_eq!(canonical_str.as_ref(), target_str.as_ref());
+                                }
                             }
                         }
                     }
