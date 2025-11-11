@@ -302,7 +302,12 @@ fn path_contains_nul(p: &Path) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        p.as_os_str().encode_wide().any(|c| c == 0)
+        p.as_os_str().encode_wide().any(|u| u == 0)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        // Fallback for other platforms
+        return false;
     }
 }
 
@@ -699,6 +704,34 @@ pub fn anchored_canonicalize(
             ));
         }
     }
+
+    // On Windows, treat drive-relative anchors (e.g., "C:dir") as absolute anchors ("C:\\dir").
+    // Anchors act as virtual roots and should not depend on the process's per-drive cwd.
+    #[cfg(windows)]
+    let anchor = {
+        use std::path::{Component, Prefix};
+        let mut comps = anchor.components();
+        match comps.next() {
+            Some(Component::Prefix(pr)) => match pr.kind() {
+                Prefix::Disk(drive) => {
+                    let mut rest = comps.clone();
+                    let is_absolute = matches!(rest.next(), Some(Component::RootDir));
+                    if is_absolute {
+                        anchor.to_path_buf()
+                    } else {
+                        // Synthesize absolute from drive-relative: "C:\\" + remaining components
+                        let mut out = PathBuf::from(format!("{}:\\", drive as char));
+                        for c in comps {
+                            out.push(c.as_os_str());
+                        }
+                        out
+                    }
+                }
+                _ => anchor.to_path_buf(),
+            },
+            _ => anchor.to_path_buf(),
+        }
+    };
 
     // Canonicalize anchor (soft) to get absolute, platform-correct base even if parts don't exist.
     let mut base = soft_canonicalize(anchor)?;

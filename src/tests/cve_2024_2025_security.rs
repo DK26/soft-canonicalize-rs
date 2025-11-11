@@ -105,15 +105,59 @@ fn test_windows_all_device_names_traversal() {
 fn test_windows_drive_relative_path_handling() {
     // BLACK-BOX: CVE-2025-23084 - Drive-relative paths like "C:file.txt"
     // These are relative to current directory on drive C:, not absolute
+    // Drive-relative semantics: `C:foo` is relative to the process's *current directory on C:*.
+    // We model this by obtaining the per-drive current directory for C: if available.
+    // Fallback rules follow Windows semantics:
+    // 1) If process CWD is already on C:, use it
+    // 2) Else, use env var "=C:" (per-drive CWD) if set
+    // 3) Else, fallback to C:\ root
+    let cwd = std::env::current_dir().expect("current_dir must be accessible");
+    let expected_base = {
+        use std::path::{Component, Prefix};
+        if let Some(Component::Prefix(pr)) = cwd.components().next() {
+            if let Prefix::Disk(d) = pr.kind() {
+                if d == b'C' || d == b'c' {
+                    // Process CWD is already on C:
+                    soft_canonicalize(&cwd).expect("canonicalize cwd")
+                } else {
+                    // Try per-drive env var "=C:"
+                    if let Some(val) = std::env::var_os("=C:") {
+                        soft_canonicalize(std::path::PathBuf::from(val))
+                            .expect("canonicalize per-drive C: cwd")
+                    } else {
+                        // Fallback to C:\ root
+                        soft_canonicalize(std::path::Path::new(r"C:\"))
+                            .expect("canonicalize C:\\ root")
+                    }
+                }
+            } else {
+                // Non-disk prefixes: fallback to env var or root
+                if let Some(val) = std::env::var_os("=C:") {
+                    soft_canonicalize(std::path::PathBuf::from(val))
+                        .expect("canonicalize per-drive C: cwd")
+                } else {
+                    soft_canonicalize(std::path::Path::new(r"C:\")).expect("canonicalize C:\\ root")
+                }
+            }
+        } else {
+            // Relative CWD? Fallback to env var or root
+            if let Some(val) = std::env::var_os("=C:") {
+                soft_canonicalize(std::path::PathBuf::from(val))
+                    .expect("canonicalize per-drive C: cwd")
+            } else {
+                soft_canonicalize(std::path::Path::new(r"C:\")).expect("canonicalize C:\\ root")
+            }
+        }
+    };
+    let expected = expected_base.join("test.txt");
+    let result = soft_canonicalize(r"C:test.txt")
+        .expect("Drive-relative file should resolve relative to C: current directory");
 
-    let result = soft_canonicalize(r"C:test.txt");
-
-    // Should resolve relative to current directory on C:
-    assert!(result.is_ok());
-    let resolved = result.unwrap();
-
-    // Must be absolute (extended-length on Windows)
-    assert!(resolved.to_string_lossy().starts_with(r"\\?\"));
+    assert_eq!(
+        result, expected,
+        "Drive-relative resolution mismatch: expected {:?} got {:?}",
+        expected, result
+    );
 }
 
 #[cfg(windows)]

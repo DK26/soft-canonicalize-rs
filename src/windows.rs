@@ -203,12 +203,66 @@ pub(crate) fn ensure_windows_extended_prefix(p: &Path) -> PathBuf {
             // Already extended-length
             p.to_path_buf()
         }
-        Prefix::Disk(_drive) => {
-            // \\\?\\C:\...
+        Prefix::Disk(drive) => {
+            // Build an extended-length disk path. If the input was drive-relative (e.g., "C:dir"),
+            // resolve relative to the process's current directory on that drive (Windows semantics).
+            // Otherwise (already absolute like "C:\\..."), just add the verbatim prefix.
             use std::ffi::OsString;
-            let mut s = OsString::from(r"\\?\");
-            s.push(p.as_os_str());
-            PathBuf::from(s)
+
+            // Peek the next component to detect drive-relative vs absolute
+            let mut rest = comps.clone();
+            let is_absolute = matches!(rest.next(), Some(Component::RootDir));
+
+            if is_absolute {
+                // Fast path: already absolute -> just prefix with \\?\
+                let mut s = OsString::from(r"\\?\");
+                s.push(p.as_os_str());
+                PathBuf::from(s)
+            } else {
+                // Drive-relative: base is the current directory on that drive if available
+                // Fallback to the drive root if no per-drive current directory is found.
+                #[inline]
+                fn current_dir_on_drive(drive: u8) -> Option<PathBuf> {
+                    // First, if the process current_dir is on this drive, use it directly
+                    if let Ok(cwd) = std::env::current_dir() {
+                        if let Some(std::path::Component::Prefix(pr)) = cwd.components().next() {
+                            if let std::path::Prefix::Disk(d) = pr.kind() {
+                                if d == drive {
+                                    return Some(cwd);
+                                }
+                            }
+                        }
+                    }
+                    // Next, try Windows per-drive current directory env var: "=<DRIVE>:"
+                    // e.g., "=C:" -> "C:\\path\\to\\cwd"
+                    let mut name = String::with_capacity(3);
+                    name.push('=');
+                    name.push((drive as char).to_ascii_uppercase());
+                    name.push(':');
+                    if let Some(val) = std::env::var_os(&name) {
+                        let base = PathBuf::from(val);
+                        // Ensure it looks like an absolute path (has RootDir)
+                        if matches!(
+                            base.components().nth(1),
+                            Some(std::path::Component::RootDir)
+                        ) {
+                            return Some(base);
+                        }
+                    }
+                    None
+                }
+
+                let base = current_dir_on_drive(drive)
+                    .unwrap_or_else(|| PathBuf::from(format!("{}:\\", drive as char)));
+
+                // Ensure verbatim prefix on the base
+                let mut out = ensure_windows_extended_prefix(&base);
+                // Append remaining components (after the drive prefix) lexically
+                for c in comps {
+                    out.push(c.as_os_str());
+                }
+                out
+            }
         }
         Prefix::UNC(server, share) => {
             // \\?\UNC\server\share\...
