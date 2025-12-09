@@ -209,7 +209,8 @@ fn test_with_symlinks() -> std::io::Result<()> {
 
 - Prefer exact equality over hints:
   - Do not use `starts_with`/`ends_with` to “approximate” expected paths. Compute or state the full expected path and `assert_eq!`.
-  - Windows: when asserting final absolute results, use extended-length expectations (e.g., `\\?\C:\\...`) if applicable.
+  - Windows: when asserting final absolute results, use extended-length expectations (e.g., `\\?\C:\...`) if applicable.
+  - Positive-only: Main test assertions must validate the correct expected output, not enumerate incorrect forms. Avoid patterns like `assert!(!path.starts_with("\\?\"))` for final correctness; instead assert equality with the properly transformed path. Negative checks may appear only in input precondition validation.
 
 - Build expected paths simply and readably:
   - For inputs (what a user would type), use raw strings (e.g., `r"hello\dir\..\world"`).
@@ -241,40 +242,37 @@ fn test_with_symlinks() -> std::io::Result<()> {
   - **CRITICAL**: If test code directly calls `dunce::` functions (not just our library functions), use `#[cfg(all(feature = "dunce", windows))]` to prevent compilation errors on non-Windows platforms.
   - Without dunce: `assert_eq!(result, std::fs::canonicalize(&path)?)` - exact match expected (UNC on Windows, normal on Unix).
   - With dunce on Windows: Compare simplified result (no `\\?\` prefix) with stripped version of std's UNC output.
-  - Recommended pattern:
+  - Recommended pattern (positive-only final assertion):
     ```rust
-    #[cfg(not(feature = "dunce"))]
-    {
-        assert_eq!(result, std::fs::canonicalize(&path)?);
-    }
-    #[cfg(feature = "dunce")]
-    {
-        let result_str = result.to_string_lossy();
-        let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
-        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
-        assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
-    }
+  #[cfg(not(feature = "dunce"))]
+  {
+    assert_eq!(result, std::fs::canonicalize(&path)?);
+  }
+  #[cfg(feature = "dunce")]
+  {
+    let result_str = result.to_string_lossy();
+    let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
+    // Positive-only: equality with simplified expected (std UNC minus verbatim prefix)
+    assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+  }
     ```
-  - **Cleaner alternative using macro** (optional, for tests with many repetitive comparisons):
+  - **Cleaner alternative using macro** (optional, for tests with many repetitive comparisons; positive-only):
     ```rust
     // Define at top of test file (use sparingly - explicit patterns are more debuggable)
-    macro_rules! assert_std_compat {
-        ($result:expr, $path:expr) => {
-            #[cfg(not(feature = "dunce"))]
-            {
-                assert_eq!($result, std::fs::canonicalize(&$path)?);
-            }
-            #[cfg(feature = "dunce")]
-            {
-                let result_str = $result.to_string_lossy();
-                let std_str = std::fs::canonicalize(&$path)?.to_string_lossy();
-                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-                assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
-            }
-        };
-    }
+  macro_rules! assert_std_compat {
+    ($result:expr, $path:expr) => {
+      #[cfg(not(feature = "dunce"))]
+      {
+        assert_eq!($result, std::fs::canonicalize(&$path)?);
+      }
+      #[cfg(feature = "dunce")]
+      {
+        let result_str = $result.to_string_lossy();
+        let std_str = std::fs::canonicalize(&$path)?.to_string_lossy();
+        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+      }
+    };
+  }
     
     // Usage in test
     let result = soft_canonicalize(&path)?;
