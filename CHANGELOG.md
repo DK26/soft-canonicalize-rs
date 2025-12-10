@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-12-10
+
+### Breaking Changes
+
+- **Linux `/proc/PID/root` magic symlinks are now preserved** ([#44](https://github.com/DK26/soft-canonicalize-rs/issues/44))
+  - Previously, `soft_canonicalize("/proc/PID/root")` would resolve to `/` (following `std::fs::canonicalize` behavior)
+  - Now preserves the namespace boundary: returns `/proc/PID/root` as-is
+  - Affects: `/proc/PID/root`, `/proc/PID/cwd`, `/proc/self/root`, `/proc/thread-self/root`
+  - **Migration**: Code that relied on `/proc` paths resolving to `/` needs updating
+  - **Security**: This is a security fix - the old behavior could allow namespace escapes in container tooling
+
+- **`proc-canonicalize` is now a default feature**
+  - Users who need the old `std::fs::canonicalize` behavior can disable with `default-features = false`
+  - The `dunce` feature works with or without `proc-canonicalize`
+
+### Fixed
+
+- **Windows drive-relative anchor paths now produce correct absolute verbatim paths** ([#43](https://github.com/DK26/soft-canonicalize-rs/issues/43))
+  - `anchored_canonicalize("C:Users\\test", "data")` previously returned malformed `\\?\C:Users\test\data` (missing backslash after colon)
+  - Now correctly returns `\\?\C:\Users\test\data`
+  - This was a security-relevant fix as downstream boundary checks could fail on malformed paths
+
+### Added
+
+- **New `proc-canonicalize` feature** (default enabled)
+  - Fixes Linux `/proc/PID/root` magic symlink handling via the [`proc-canonicalize`](https://crates.io/crates/proc-canonicalize) crate
+  - Can be disabled with `default-features = false` to use `std::fs::canonicalize` behavior
+  - The `dunce` feature now uses conditional forwarding (`proc-canonicalize?/dunce`)
+
+- **Comprehensive feature combination test suite** (`tests/feature_combinations.rs`)
+  - Tests all four feature combinations on Windows and Linux
+  - Validates `proc-canonicalize` behavior differences
+  - Validates `dunce` path simplification on Windows
+
+### Changed
+
+- **Dependency**: Added optional `proc-canonicalize` dependency (zero runtime deps, ~200 lines)
+- **Feature matrix**:
+  | Features                      | Backend                                |
+  | ----------------------------- | -------------------------------------- |
+  | default (proc-canonicalize)   | `proc_canonicalize::canonicalize`      |
+  | default + dunce               | `proc_canonicalize` with dunce feature |
+  | --no-default-features         | `std::fs::canonicalize`                |
+  | --no-default-features + dunce | `dunce::canonicalize` (Windows)        |
+
 ## [0.4.5] - 2025-10-12
 
 ### Changed

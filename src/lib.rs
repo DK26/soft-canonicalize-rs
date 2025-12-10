@@ -54,7 +54,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.4"
+//! soft-canonicalize = "0.5"
 //! ```
 //!
 //! ### Basic Example
@@ -101,7 +101,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = { version = "0.4", features = ["anchored"] }
+//! soft-canonicalize = { version = "0.5", features = ["anchored"] }
 //! ```
 //!
 //! ```rust
@@ -158,7 +158,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = { version = "0.4", features = ["dunce"] }
+//! soft-canonicalize = { version = "0.5", features = ["dunce"] }
 //! ```
 //!
 //! **Example:**

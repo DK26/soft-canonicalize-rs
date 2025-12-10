@@ -59,7 +59,7 @@ Path resolution libraries fall into two categories:
 ### Cargo.toml
 ```toml
 [dependencies]
-soft-canonicalize = "0.4"
+soft-canonicalize = "0.5"
 ```
 
 ### Code Example
@@ -101,7 +101,7 @@ For **correct symlink resolution within virtual/constrained directory spaces**, 
 
 ```toml
 [dependencies]
-soft-canonicalize = { version = "0.4", features = ["anchored"] }
+soft-canonicalize = { version = "0.5", features = ["anchored"] }
 ```
 
 ```rust
@@ -143,7 +143,7 @@ If you need simplified paths (`C:\foo`) for compatibility with legacy Windows ap
 
 ```toml
 [dependencies]
-soft-canonicalize = { version = "0.4", features = ["dunce"] }
+soft-canonicalize = { version = "0.5", features = ["dunce"] }
 ```
 
 **Example:**
