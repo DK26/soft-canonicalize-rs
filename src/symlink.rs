@@ -156,10 +156,101 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     #[cfg(windows)]
                     let target = target.clone();
 
-                    // Now strip the anchor prefix (for targets within anchor)
-                    if let Ok(rel) = target.strip_prefix(anchor) {
-                        // Target is already within anchor: /anchor/foo -> foo
-                        // Rejoin to anchor to normalize: anchor/foo
+                    // Try to strip anchor prefix from target using component-aware comparison
+                    // This handles Windows prefix format differences (\\?\C: vs C:)
+                    // AND 8.3 short name vs long name mismatches (e.g., RUNNER~1 vs runneradmin)
+                    #[cfg(windows)]
+                    let rel_path = {
+                        use std::path::{Component, Prefix};
+
+                        // First, try to canonicalize the target to expand 8.3 short names
+                        // This is needed because junction targets often contain short names
+                        // while the anchor uses long names (or vice versa)
+                        let target_for_comparison =
+                            if let Ok(canonical_target) = std::fs::canonicalize(&target) {
+                                canonical_target
+                            } else {
+                                // If canonicalization fails (target doesn't fully exist),
+                                // try to canonicalize the deepest existing prefix
+                                let mut check = target.clone();
+                                let mut suffix_parts = Vec::new();
+                                while !check.as_os_str().is_empty() {
+                                    if check.exists() {
+                                        break;
+                                    }
+                                    if let Some(file_name) = check.file_name() {
+                                        suffix_parts.push(file_name.to_os_string());
+                                    }
+                                    if !check.pop() {
+                                        break;
+                                    }
+                                }
+                                if let Ok(canonical_prefix) = std::fs::canonicalize(&check) {
+                                    let mut result = canonical_prefix;
+                                    for part in suffix_parts.into_iter().rev() {
+                                        result.push(part);
+                                    }
+                                    result
+                                } else {
+                                    target.clone()
+                                }
+                            };
+
+                        // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
+                        let components_equal = |a: &Component, b: &Component| -> bool {
+                            match (a, b) {
+                                (Component::Prefix(ap), Component::Prefix(bp)) => {
+                                    match (ap.kind(), bp.kind()) {
+                                        (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
+                                        | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::Disk(ad), Prefix::Disk(bd)) => {
+                                            ad.eq_ignore_ascii_case(&bd)
+                                        }
+                                        (Prefix::VerbatimUNC(as1, as2), Prefix::UNC(bs1, bs2))
+                                        | (Prefix::UNC(as1, as2), Prefix::VerbatimUNC(bs1, bs2))
+                                        | (
+                                            Prefix::VerbatimUNC(as1, as2),
+                                            Prefix::VerbatimUNC(bs1, bs2),
+                                        )
+                                        | (Prefix::UNC(as1, as2), Prefix::UNC(bs1, bs2)) => {
+                                            as1.eq_ignore_ascii_case(bs1)
+                                                && as2.eq_ignore_ascii_case(bs2)
+                                        }
+                                        _ => ap == bp,
+                                    }
+                                }
+                                _ => a == b,
+                            }
+                        };
+
+                        let anchor_comps: Vec<_> = anchor.components().collect();
+                        let target_comps: Vec<_> = target_for_comparison.components().collect();
+
+                        // Check if target starts with anchor (using component-aware comparison)
+                        let is_within_anchor = target_comps.len() >= anchor_comps.len()
+                            && target_comps
+                                .iter()
+                                .zip(anchor_comps.iter())
+                                .all(|(t, a)| components_equal(t, a));
+
+                        if is_within_anchor {
+                            // Build relative path from remaining components
+                            let mut rel = std::path::PathBuf::new();
+                            for comp in target_comps.iter().skip(anchor_comps.len()) {
+                                rel.push(comp);
+                            }
+                            Some(rel)
+                        } else {
+                            None
+                        }
+                    };
+
+                    #[cfg(not(windows))]
+                    let rel_path = target.strip_prefix(anchor).ok().map(|p| p.to_path_buf());
+
+                    if let Some(rel) = rel_path {
+                        // Target is already within anchor: rejoin to anchor to normalize
                         current = anchor.join(rel);
                     } else {
                         // Target is outside anchor: strip root and clamp to anchor

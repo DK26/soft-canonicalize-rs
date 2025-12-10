@@ -186,6 +186,36 @@ fn test_with_symlinks() -> std::io::Result<()> {
 
 **Remember**: Tests that pass locally might fail on GitHub Actions if they lack proper feature guards!
 
+## Git Commit Workflow (CRITICAL for Agents)
+
+**ALWAYS check staged files before committing.** Before running `git commit`, you MUST:
+
+1. **Run `git status`** to see what files are staged vs unstaged
+2. **Run `git diff --staged --stat`** to see exactly what will be committed
+3. **Review the staged changes** - ensure they match the intended commit scope
+4. **If unrelated files are staged**, either:
+   - Unstage them with `git reset HEAD <file>` before committing, OR
+   - Ask the user if they should be included
+
+**Never blindly run `git add <file>; git commit`** without checking what was already staged. The user may have staged files for a different purpose.
+
+**Commit message must match staged content.** If the staged diff contains files unrelated to your commit message, STOP and clarify with the user.
+
+**Example workflow:**
+```bash
+# WRONG - dangerous, ignores existing staged files
+git add myfile.rs
+git commit -m "fix: something"
+
+# CORRECT - always check first
+git status
+git diff --staged --stat
+# Review output, then if appropriate:
+git add myfile.rs
+git diff --staged --stat  # Check again after adding
+git commit -m "fix: something"
+```
+
 ## Coding Guidelines
 
 - Style: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
@@ -209,7 +239,8 @@ fn test_with_symlinks() -> std::io::Result<()> {
 
 - Prefer exact equality over hints:
   - Do not use `starts_with`/`ends_with` to “approximate” expected paths. Compute or state the full expected path and `assert_eq!`.
-  - Windows: when asserting final absolute results, use extended-length expectations (e.g., `\\?\C:\\...`) if applicable.
+  - Windows: when asserting final absolute results, use extended-length expectations (e.g., `\\?\C:\...`) if applicable.
+  - Positive-only: Main test assertions must validate the correct expected output, not enumerate incorrect forms. Avoid patterns like `assert!(!path.starts_with("\\?\"))` for final correctness; instead assert equality with the properly transformed path. Negative checks may appear only in input precondition validation.
 
 - Build expected paths simply and readably:
   - For inputs (what a user would type), use raw strings (e.g., `r"hello\dir\..\world"`).
@@ -241,40 +272,37 @@ fn test_with_symlinks() -> std::io::Result<()> {
   - **CRITICAL**: If test code directly calls `dunce::` functions (not just our library functions), use `#[cfg(all(feature = "dunce", windows))]` to prevent compilation errors on non-Windows platforms.
   - Without dunce: `assert_eq!(result, std::fs::canonicalize(&path)?)` - exact match expected (UNC on Windows, normal on Unix).
   - With dunce on Windows: Compare simplified result (no `\\?\` prefix) with stripped version of std's UNC output.
-  - Recommended pattern:
+  - Recommended pattern (positive-only final assertion):
     ```rust
-    #[cfg(not(feature = "dunce"))]
-    {
-        assert_eq!(result, std::fs::canonicalize(&path)?);
-    }
-    #[cfg(feature = "dunce")]
-    {
-        let result_str = result.to_string_lossy();
-        let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
-        assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
-        assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
-    }
+  #[cfg(not(feature = "dunce"))]
+  {
+    assert_eq!(result, std::fs::canonicalize(&path)?);
+  }
+  #[cfg(feature = "dunce")]
+  {
+    let result_str = result.to_string_lossy();
+    let std_str = std::fs::canonicalize(&path)?.to_string_lossy();
+    // Positive-only: equality with simplified expected (std UNC minus verbatim prefix)
+    assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+  }
     ```
-  - **Cleaner alternative using macro** (optional, for tests with many repetitive comparisons):
+  - **Cleaner alternative using macro** (optional, for tests with many repetitive comparisons; positive-only):
     ```rust
     // Define at top of test file (use sparingly - explicit patterns are more debuggable)
-    macro_rules! assert_std_compat {
-        ($result:expr, $path:expr) => {
-            #[cfg(not(feature = "dunce"))]
-            {
-                assert_eq!($result, std::fs::canonicalize(&$path)?);
-            }
-            #[cfg(feature = "dunce")]
-            {
-                let result_str = $result.to_string_lossy();
-                let std_str = std::fs::canonicalize(&$path)?.to_string_lossy();
-                assert!(!result_str.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-                assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
-            }
-        };
-    }
+  macro_rules! assert_std_compat {
+    ($result:expr, $path:expr) => {
+      #[cfg(not(feature = "dunce"))]
+      {
+        assert_eq!($result, std::fs::canonicalize(&$path)?);
+      }
+      #[cfg(feature = "dunce")]
+      {
+        let result_str = $result.to_string_lossy();
+        let std_str = std::fs::canonicalize(&$path)?.to_string_lossy();
+        assert_eq!(result_str.as_ref(), std_str.trim_start_matches(r"\\?\"));
+      }
+    };
+  }
     
     // Usage in test
     let result = soft_canonicalize(&path)?;

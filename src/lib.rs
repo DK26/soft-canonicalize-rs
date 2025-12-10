@@ -13,7 +13,7 @@
 //! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)
 //! - **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries
-//! - **🔒 Robust** - 445 comprehensive tests covering edge cases and security scenarios
+//! - **🔒 Robust** - 495 comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
 //! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
@@ -54,7 +54,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = "0.4"
+//! soft-canonicalize = "0.5"
 //! ```
 //!
 //! ### Basic Example
@@ -101,7 +101,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = { version = "0.4", features = ["anchored"] }
+//! soft-canonicalize = { version = "0.5", features = ["anchored"] }
 //! ```
 //!
 //! ```rust
@@ -158,7 +158,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! soft-canonicalize = { version = "0.4", features = ["dunce"] }
+//! soft-canonicalize = { version = "0.5", features = ["dunce"] }
 //! ```
 //!
 //! **Example:**
@@ -194,6 +194,41 @@
 //! - Automatically keeps UNC for paths with trailing spaces/dots
 //! - Automatically keeps UNC for paths containing `..` (literal interpretation)
 //!
+//! ## When Paths Must Exist: `proc-canonicalize`
+//!
+//! Since v0.5.0, `soft_canonicalize` uses [`proc-canonicalize`](https://crates.io/crates/proc-canonicalize)
+//! by default for existing-path canonicalization instead of `std::fs::canonicalize`. This fixes a
+//! critical issue with Linux namespace boundaries.
+//!
+//! **The Problem**: On Linux, `std::fs::canonicalize` resolves "magic symlinks" like `/proc/PID/root`
+//! to their targets, losing the namespace boundary:
+//!
+//! ```rust
+//! # #[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+//! # fn main() -> std::io::Result<()> {
+//! // /proc/self/root is a "magic symlink" pointing to the current process's root filesystem
+//! // std::fs::canonicalize incorrectly resolves it to "/"
+//! let std_result = std::fs::canonicalize("/proc/self/root")?;
+//! assert_eq!(std_result.to_string_lossy(), "/"); // Wrong! Namespace boundary lost
+//!
+//! // proc_canonicalize preserves the namespace boundary
+//! let proc_result = proc_canonicalize::canonicalize("/proc/self/root")?;
+//! assert_eq!(proc_result.to_string_lossy(), "/proc/self/root"); // Correct!
+//! # Ok(())
+//! # }
+//! # #[cfg(not(all(target_os = "linux", feature = "proc-canonicalize")))]
+//! # fn main() {}
+//! ```
+//!
+//! **Recommendation**: If you need to canonicalize paths that **must exist** (and would previously
+//! use `std::fs::canonicalize`), use `proc_canonicalize::canonicalize` for correct Linux namespace
+//! handling:
+//!
+//! ```toml
+//! [dependencies]
+//! proc-canonicalize = "0.0"
+//! ```
+//!
 //! ## Security & CVE Coverage
 //!
 //! Security does not depend on enabling features. The core API is secure-by-default; the optional
@@ -220,7 +255,7 @@
 //!
 //! ## Testing
 //!
-//! 445 tests including:
+//! 495 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
@@ -285,11 +320,21 @@ use crate::windows::{
 use std::io;
 use std::path::{Path, PathBuf};
 
-// When dunce feature is enabled AND on Windows, use dunce::canonicalize which simplifies paths
-// Otherwise use std::fs::canonicalize
-#[cfg(all(feature = "dunce", windows))]
+// Canonicalization backend selection (priority order):
+// 1. proc-canonicalize feature (default): fixes Linux /proc/PID/root magic symlinks,
+//    and delegates to dunce when both features are enabled
+// 2. dunce feature on Windows (without proc-canonicalize): uses dunce::canonicalize
+// 3. fallback: uses std::fs::canonicalize
+#[cfg(feature = "proc-canonicalize")]
+use proc_canonicalize::canonicalize as fs_canonicalize;
+
+#[cfg(all(not(feature = "proc-canonicalize"), feature = "dunce", windows))]
 use dunce::canonicalize as fs_canonicalize;
-#[cfg(not(all(feature = "dunce", windows)))]
+
+#[cfg(all(
+    not(feature = "proc-canonicalize"),
+    not(all(feature = "dunce", windows))
+))]
 use std::fs::canonicalize as fs_canonicalize;
 
 #[inline]
@@ -302,7 +347,12 @@ fn path_contains_nul(p: &Path) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        p.as_os_str().encode_wide().any(|c| c == 0)
+        p.as_os_str().encode_wide().any(|u| u == 0)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        // Fallback for other platforms
+        return false;
     }
 }
 
@@ -699,6 +749,34 @@ pub fn anchored_canonicalize(
             ));
         }
     }
+
+    // On Windows, treat drive-relative anchors (e.g., "C:dir") as absolute anchors ("C:\\dir").
+    // Anchors act as virtual roots and should not depend on the process's per-drive cwd.
+    #[cfg(windows)]
+    let anchor = {
+        use std::path::{Component, Prefix};
+        let mut comps = anchor.components();
+        match comps.next() {
+            Some(Component::Prefix(pr)) => match pr.kind() {
+                Prefix::Disk(drive) => {
+                    let mut rest = comps.clone();
+                    let is_absolute = matches!(rest.next(), Some(Component::RootDir));
+                    if is_absolute {
+                        anchor.to_path_buf()
+                    } else {
+                        // Synthesize absolute from drive-relative: "C:\\" + remaining components
+                        let mut out = PathBuf::from(format!("{}:\\", drive as char));
+                        for c in comps {
+                            out.push(c.as_os_str());
+                        }
+                        out
+                    }
+                }
+                _ => anchor.to_path_buf(),
+            },
+            _ => anchor.to_path_buf(),
+        }
+    };
 
     // Canonicalize anchor (soft) to get absolute, platform-correct base even if parts don't exist.
     let mut base = soft_canonicalize(anchor)?;
