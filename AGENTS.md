@@ -186,6 +186,36 @@ fn test_with_symlinks() -> std::io::Result<()> {
 
 **Remember**: Tests that pass locally might fail on GitHub Actions if they lack proper feature guards!
 
+## Git Commit Workflow (CRITICAL for Agents)
+
+**ALWAYS check staged files before committing.** Before running `git commit`, you MUST:
+
+1. **Run `git status`** to see what files are staged vs unstaged
+2. **Run `git diff --staged --stat`** to see exactly what will be committed
+3. **Review the staged changes** - ensure they match the intended commit scope
+4. **If unrelated files are staged**, either:
+   - Unstage them with `git reset HEAD <file>` before committing, OR
+   - Ask the user if they should be included
+
+**Never blindly run `git add <file>; git commit`** without checking what was already staged. The user may have staged files for a different purpose.
+
+**Commit message must match staged content.** If the staged diff contains files unrelated to your commit message, STOP and clarify with the user.
+
+**Example workflow:**
+```bash
+# WRONG - dangerous, ignores existing staged files
+git add myfile.rs
+git commit -m "fix: something"
+
+# CORRECT - always check first
+git status
+git diff --staged --stat
+# Review output, then if appropriate:
+git add myfile.rs
+git diff --staged --stat  # Check again after adding
+git commit -m "fix: something"
+```
+
 ## Coding Guidelines
 
 - Style: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
