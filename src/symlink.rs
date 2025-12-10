@@ -158,9 +158,43 @@ pub(crate) fn resolve_anchored_symlink_chain(
 
                     // Try to strip anchor prefix from target using component-aware comparison
                     // This handles Windows prefix format differences (\\?\C: vs C:)
+                    // AND 8.3 short name vs long name mismatches (e.g., RUNNER~1 vs runneradmin)
                     #[cfg(windows)]
                     let rel_path = {
                         use std::path::{Component, Prefix};
+
+                        // First, try to canonicalize the target to expand 8.3 short names
+                        // This is needed because junction targets often contain short names
+                        // while the anchor uses long names (or vice versa)
+                        let target_for_comparison =
+                            if let Ok(canonical_target) = std::fs::canonicalize(&target) {
+                                canonical_target
+                            } else {
+                                // If canonicalization fails (target doesn't fully exist),
+                                // try to canonicalize the deepest existing prefix
+                                let mut check = target.clone();
+                                let mut suffix_parts = Vec::new();
+                                while !check.as_os_str().is_empty() {
+                                    if check.exists() {
+                                        break;
+                                    }
+                                    if let Some(file_name) = check.file_name() {
+                                        suffix_parts.push(file_name.to_os_string());
+                                    }
+                                    if !check.pop() {
+                                        break;
+                                    }
+                                }
+                                if let Ok(canonical_prefix) = std::fs::canonicalize(&check) {
+                                    let mut result = canonical_prefix;
+                                    for part in suffix_parts.into_iter().rev() {
+                                        result.push(part);
+                                    }
+                                    result
+                                } else {
+                                    target.clone()
+                                }
+                            };
 
                         // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
                         let components_equal = |a: &Component, b: &Component| -> bool {
@@ -191,7 +225,7 @@ pub(crate) fn resolve_anchored_symlink_chain(
                         };
 
                         let anchor_comps: Vec<_> = anchor.components().collect();
-                        let target_comps: Vec<_> = target.components().collect();
+                        let target_comps: Vec<_> = target_for_comparison.components().collect();
 
                         // Check if target starts with anchor (using component-aware comparison)
                         let is_within_anchor = target_comps.len() >= anchor_comps.len()

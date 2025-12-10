@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now correctly returns `\\?\C:\Users\test\data`
   - This was a security-relevant fix as downstream boundary checks could fail on malformed paths
 
+- **Windows junction/symlink handling in `anchored_canonicalize`**
+  - Fixed prefix format mismatch: anchor uses verbatim format (`\\?\C:\...`) while junction targets use regular disk format (`C:\...`), causing `strip_prefix` to fail
+  - Fixed 8.3 short name mismatch: junction targets may contain short names (e.g., `RUNNER~1`) while the anchor uses long names (`runneradmin`)
+  - Implemented component-aware prefix comparison treating `VerbatimDisk(C)` and `Disk(C)` as equivalent
+  - Added canonicalization of junction targets before comparison to expand 8.3 short names
+  - Added comprehensive regression test suite (`tests/windows_junction_anchored_fix.rs`) with 10 tests
+
 ### Added
 
 - **New `proc-canonicalize` feature** (default enabled)

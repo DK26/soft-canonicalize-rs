@@ -17,7 +17,7 @@ Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`
 **⚡ Fast** - Mixed workload median performance: Windows ~1.8x (13,840 paths/s), Linux ~3.0x (379,119 paths/s) faster than Python's pathlib (see [benchmark methodology](benches/README.md) for 5-run protocol and environment details)  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)  
 **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries  
-**🔒 Robust** - 495 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 500+ comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Optional features may add minimal dependencies
