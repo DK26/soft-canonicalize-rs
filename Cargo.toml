@@ -17,11 +17,11 @@ rust-version = "1.70.0"
 # register separate ad-hoc test targets for helpers.
 
 [dependencies]
-# Core canonicalization - fixes std::fs::canonicalize for Linux /proc/PID/root magic symlinks
-proc-canonicalize = "0.0.1"
+# Optional: fixes std::fs::canonicalize for Linux /proc/PID/root magic symlinks.
+# Enabled by default. Disable with `default-features = false` if you need std behavior.
+proc-canonicalize = { version = "0.0.2", optional = true }
 
 # Optional dunce dependency for path simplification (Windows-only)
-# When enabled, proc-canonicalize's dunce feature is also activated
 [target.'cfg(windows)'.dependencies]
 dunce = { version = "1.0", optional = true }
 
@@ -35,14 +35,17 @@ tempfile = "=3.21" # Do not update
 junction = "1.3"
 
 [features]
-default = []
+default = ["proc-canonicalize"]
 # Opt-in API exposing anchored_canonicalize() function. No extra deps. Disabled by default to reduce binary size.
 anchored = []
+# Optional: use proc-canonicalize for proper Linux /proc/PID/root magic symlink handling.
+# Enabled by default. Disable with `default-features = false` to use std::fs::canonicalize.
+proc-canonicalize = ["dep:proc-canonicalize"]
 # Opt-in dunce behavior (Windows-only): simplify Windows UNC paths (\\?\C:\foo) to legacy format (C:\foo) when safe.
 # This enables compatibility with legacy programs while maintaining non-existing path support.
 # On non-Windows platforms, this feature has no effect and adds no dependencies.
-# Forwards dunce feature to proc-canonicalize and adds dunce crate as dependency on Windows only.
-dunce = ["dep:dunce", "proc-canonicalize/dunce"]
+# When proc-canonicalize is also enabled, forwards dunce feature to it; otherwise uses dunce directly.
+dunce = ["dep:dunce", "proc-canonicalize?/dunce"]
 
 [[example]]
 name = "basic_usage"

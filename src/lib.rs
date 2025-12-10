@@ -285,11 +285,22 @@ use crate::windows::{
 use std::io;
 use std::path::{Path, PathBuf};
 
-// Use proc-canonicalize which:
-// 1. Fixes Linux /proc/PID/root magic symlink handling (preserves namespace prefix)
-// 2. Delegates to dunce::canonicalize when dunce feature is enabled (Windows path simplification)
-// 3. Falls back to std::fs::canonicalize otherwise
+// Canonicalization backend selection (priority order):
+// 1. proc-canonicalize feature (default): fixes Linux /proc/PID/root magic symlinks,
+//    and delegates to dunce when both features are enabled
+// 2. dunce feature on Windows (without proc-canonicalize): uses dunce::canonicalize
+// 3. fallback: uses std::fs::canonicalize
+#[cfg(feature = "proc-canonicalize")]
 use proc_canonicalize::canonicalize as fs_canonicalize;
+
+#[cfg(all(not(feature = "proc-canonicalize"), feature = "dunce", windows))]
+use dunce::canonicalize as fs_canonicalize;
+
+#[cfg(all(
+    not(feature = "proc-canonicalize"),
+    not(all(feature = "dunce", windows))
+))]
+use std::fs::canonicalize as fs_canonicalize;
 
 #[inline]
 fn path_contains_nul(p: &Path) -> bool {
