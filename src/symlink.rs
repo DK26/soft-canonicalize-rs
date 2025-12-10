@@ -156,10 +156,67 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     #[cfg(windows)]
                     let target = target.clone();
 
-                    // Now strip the anchor prefix (for targets within anchor)
-                    if let Ok(rel) = target.strip_prefix(anchor) {
-                        // Target is already within anchor: /anchor/foo -> foo
-                        // Rejoin to anchor to normalize: anchor/foo
+                    // Try to strip anchor prefix from target using component-aware comparison
+                    // This handles Windows prefix format differences (\\?\C: vs C:)
+                    #[cfg(windows)]
+                    let rel_path = {
+                        use std::path::{Component, Prefix};
+
+                        // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
+                        let components_equal = |a: &Component, b: &Component| -> bool {
+                            match (a, b) {
+                                (Component::Prefix(ap), Component::Prefix(bp)) => {
+                                    match (ap.kind(), bp.kind()) {
+                                        (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
+                                        | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
+                                        | (Prefix::Disk(ad), Prefix::Disk(bd)) => {
+                                            ad.eq_ignore_ascii_case(&bd)
+                                        }
+                                        (Prefix::VerbatimUNC(as1, as2), Prefix::UNC(bs1, bs2))
+                                        | (Prefix::UNC(as1, as2), Prefix::VerbatimUNC(bs1, bs2))
+                                        | (
+                                            Prefix::VerbatimUNC(as1, as2),
+                                            Prefix::VerbatimUNC(bs1, bs2),
+                                        )
+                                        | (Prefix::UNC(as1, as2), Prefix::UNC(bs1, bs2)) => {
+                                            as1.eq_ignore_ascii_case(bs1)
+                                                && as2.eq_ignore_ascii_case(bs2)
+                                        }
+                                        _ => ap == bp,
+                                    }
+                                }
+                                _ => a == b,
+                            }
+                        };
+
+                        let anchor_comps: Vec<_> = anchor.components().collect();
+                        let target_comps: Vec<_> = target.components().collect();
+
+                        // Check if target starts with anchor (using component-aware comparison)
+                        let is_within_anchor = target_comps.len() >= anchor_comps.len()
+                            && target_comps
+                                .iter()
+                                .zip(anchor_comps.iter())
+                                .all(|(t, a)| components_equal(t, a));
+
+                        if is_within_anchor {
+                            // Build relative path from remaining components
+                            let mut rel = std::path::PathBuf::new();
+                            for comp in target_comps.iter().skip(anchor_comps.len()) {
+                                rel.push(comp);
+                            }
+                            Some(rel)
+                        } else {
+                            None
+                        }
+                    };
+
+                    #[cfg(not(windows))]
+                    let rel_path = target.strip_prefix(anchor).ok().map(|p| p.to_path_buf());
+
+                    if let Some(rel) = rel_path {
+                        // Target is already within anchor: rejoin to anchor to normalize
                         current = anchor.join(rel);
                     } else {
                         // Target is outside anchor: strip root and clamp to anchor
