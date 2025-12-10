@@ -17,7 +17,7 @@ Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`
 **⚡ Fast** - Mixed workload median performance: Windows ~1.8x (13,840 paths/s), Linux ~3.0x (379,119 paths/s) faster than Python's pathlib (see [benchmark methodology](benches/README.md) for 5-run protocol and environment details)  
 **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)  
 **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries  
-**🔒 Robust** - 445 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
+**🔒 Robust** - 485 comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
 **🔧 Zero dependencies** - Optional features may add minimal dependencies
@@ -172,18 +172,59 @@ The [dunce](https://crates.io/crates/dunce) crate intelligently simplifies Windo
 - Automatically keeps UNC for paths with trailing spaces/dots
 - Automatically keeps UNC for paths containing `..` (literal interpretation)
 
+## When Paths Must Exist: `proc-canonicalize`
+
+Since v0.5.0, `soft_canonicalize` uses [`proc-canonicalize`](https://crates.io/crates/proc-canonicalize) by default for existing-path canonicalization instead of `std::fs::canonicalize`. This fixes a critical issue with Linux namespace boundaries.
+
+### The Problem with `std::fs::canonicalize`
+
+On Linux, `std::fs::canonicalize` resolves "magic symlinks" like `/proc/PID/root` to their targets:
+
+```rust
+// std::fs::canonicalize follows magic symlinks incorrectly
+let path = std::fs::canonicalize("/proc/1/root")?; // Returns "/" (wrong!)
+// This loses the namespace boundary - dangerous for container tooling
+```
+
+### The Solution
+
+`proc-canonicalize` preserves namespace boundaries:
+
+```rust
+use proc_canonicalize::canonicalize;
+
+let path = canonicalize("/proc/1/root")?; // Returns "/proc/1/root" (correct!)
+// Namespace boundary is preserved
+```
+
+### When to Use Which
+
+| Use Case                      | Function                          | Reason                     |
+| ----------------------------- | --------------------------------- | -------------------------- |
+| Paths that may not exist      | `soft_canonicalize`               | Handles non-existing paths |
+| Existing paths (general)      | `proc_canonicalize::canonicalize` | Correct namespace handling |
+| Existing paths (std behavior) | `std::fs::canonicalize`           | Legacy compatibility only  |
+
+**Recommendation**: If you need to canonicalize paths that **must exist** (and would previously use `std::fs::canonicalize`), use `proc_canonicalize::canonicalize` for correct Linux namespace handling:
+
+```toml
+[dependencies]
+proc-canonicalize = "0.0"
+```
+
 ## Comparison with Alternatives
 
 ### Feature Comparison
 
-| Feature                          | `soft_canonicalize`           | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` |
-| -------------------------------- | ----------------------------- | ----------------------- | --------------------- | --------------------- |
-| Resolution type                  | Filesystem-based              | Filesystem-based        | Lexical               | Filesystem-based      |
-| Works with non-existing paths    | ✅                             | ❌                       | ✅                     | ❌                     |
-| Resolves symlinks                | ✅                             | ✅                       | ❌                     | ✅                     |
-| Simplified Windows paths         | ✅ (opt-in `dunce` feature)    | ❌ (UNC)                 | ❌ (varies)            | ✅                     |
-| Virtual/bounded canonicalization | ✅ (opt-in `anchored` feature) | ❌                       | ❌                     | ❌                     |
-| Zero dependencies                | ✅ (default)                   | ✅                       | ✅                     | ✅                     |
+| Feature                          | `soft_canonicalize`           | `proc_canonicalize` | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` |
+| -------------------------------- | ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- |
+| Resolution type                  | Filesystem-based              | Filesystem-based    | Filesystem-based        | Lexical               | Filesystem-based      |
+| Works with non-existing paths    | ✅                             | ❌                   | ❌                       | ✅                     | ❌                     |
+| Resolves symlinks                | ✅                             | ✅                   | ✅                       | ❌                     | ✅                     |
+| Preserves Linux namespaces       | ✅ (default)                   | ✅                   | ❌                       | N/A                   | ❌                     |
+| Simplified Windows paths         | ✅ (opt-in `dunce` feature)    | ✅ (opt-in)          | ❌ (UNC)                 | ❌ (varies)            | ✅                     |
+| Virtual/bounded canonicalization | ✅ (opt-in `anchored` feature) | ❌                   | ❌                       | ❌                     | ❌                     |
+| Zero dependencies                | ✅ (default)                   | ✅                   | ✅                       | ✅                     | ✅                     |
 
 ### When to Use Each
 
@@ -194,7 +235,8 @@ The [dunce](https://crates.io/crates/dunce) crate intelligently simplifies Windo
 - ✅ You need simplified Windows paths for legacy apps (with `dunce` feature)
 
 **Choose alternatives when:**
-- **`std::fs::canonicalize`** - All paths exist; standard library is sufficient
+- **`proc_canonicalize::canonicalize`** - All paths exist and you need correct Linux namespace handling (recommended over `std::fs::canonicalize`)
+- **`std::fs::canonicalize`** - All paths exist; only when you specifically need the legacy behavior that resolves `/proc/PID/root` to `/`
 - **`std::path::absolute`** - You only need absolute paths without symlink resolution (lexical, fast)
 - **`dunce::canonicalize`** - Windows-only, all paths exist, just need UNC simplification
 - **`normpath::normalize`** - Lexical normalization only, no filesystem I/O (fast but doesn't resolve symlinks)

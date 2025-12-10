@@ -13,7 +13,7 @@
 //! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)
 //! - **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries
-//! - **🔒 Robust** - 445 comprehensive tests covering edge cases and security scenarios
+//! - **🔒 Robust** - 485 comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
 //! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
@@ -194,6 +194,41 @@
 //! - Automatically keeps UNC for paths with trailing spaces/dots
 //! - Automatically keeps UNC for paths containing `..` (literal interpretation)
 //!
+//! ## When Paths Must Exist: `proc-canonicalize`
+//!
+//! Since v0.5.0, `soft_canonicalize` uses [`proc-canonicalize`](https://crates.io/crates/proc-canonicalize)
+//! by default for existing-path canonicalization instead of `std::fs::canonicalize`. This fixes a
+//! critical issue with Linux namespace boundaries.
+//!
+//! **The Problem**: On Linux, `std::fs::canonicalize` resolves "magic symlinks" like `/proc/PID/root`
+//! to their targets, losing the namespace boundary:
+//!
+//! ```rust
+//! # #[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+//! # fn main() -> std::io::Result<()> {
+//! // /proc/self/root is a "magic symlink" pointing to the current process's root filesystem
+//! // std::fs::canonicalize incorrectly resolves it to "/"
+//! let std_result = std::fs::canonicalize("/proc/self/root")?;
+//! assert_eq!(std_result.to_string_lossy(), "/"); // Wrong! Namespace boundary lost
+//!
+//! // proc_canonicalize preserves the namespace boundary
+//! let proc_result = proc_canonicalize::canonicalize("/proc/self/root")?;
+//! assert_eq!(proc_result.to_string_lossy(), "/proc/self/root"); // Correct!
+//! # Ok(())
+//! # }
+//! # #[cfg(not(all(target_os = "linux", feature = "proc-canonicalize")))]
+//! # fn main() {}
+//! ```
+//!
+//! **Recommendation**: If you need to canonicalize paths that **must exist** (and would previously
+//! use `std::fs::canonicalize`), use `proc_canonicalize::canonicalize` for correct Linux namespace
+//! handling:
+//!
+//! ```toml
+//! [dependencies]
+//! proc-canonicalize = "0.0"
+//! ```
+//!
 //! ## Security & CVE Coverage
 //!
 //! Security does not depend on enabling features. The core API is secure-by-default; the optional
@@ -220,7 +255,7 @@
 //!
 //! ## Testing
 //!
-//! 445 tests including:
+//! 485 tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
