@@ -18,6 +18,9 @@
 //! ```
 
 use soft_canonicalize::soft_canonicalize;
+
+// PathBuf is used in platform-specific modules (Windows, Linux) but not macOS
+#[cfg(any(windows, target_os = "linux"))]
 use std::path::PathBuf;
 
 #[cfg(feature = "anchored")]
