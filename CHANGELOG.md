@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2025-12-11
+
+### Security
+
+- **Upgraded `proc-canonicalize` to 0.0.4**: Addresses critical security hardening for Linux namespace boundaries.
+  - Fixes relative symlink namespace bypass (e.g., `link -> ../proc/self/root`).
+  - Fixes normalization bypass via `..` before symlink detection.
+- **Fixed manual traversal vulnerability**: `soft_canonicalize` now correctly preserves `/proc/PID/root` boundaries when resolving non-existing paths on Linux.
+  - Previously, manual symlink resolution for non-existing paths could resolve `/proc/PID/root` to `/`, bypassing the protection provided by `proc-canonicalize`.
+  - Added `is_proc_magic_link` check in `resolve_simple_symlink_chain` to stop resolution at magic boundaries.
+  - Now handles both process-level (`/proc/PID/root`) and task-level (`/proc/PID/task/TID/root`) namespace boundaries.
+  - **New**: Added protection against `..` escaping `/proc/PID/root` during manual traversal.
+
+### Added
+
+- **New security tests for proc-canonicalize 0.0.4 attack vectors** (`tests/linux_proc_indirect_symlink.rs`):
+  - `test_relative_symlink_resolving_to_proc_self_root`: Tests relative symlink bypass.
+  - `test_indirect_symlink_to_proc_pid_task_tid_root`: Tests task-level namespace symlink protection.
+  - `test_dotdot_escape_from_proc_root`: Tests `..` escape attempts from magic boundaries.
+
+- **Additional security edge case tests** (`tests/proc_additional_security.rs`):
+  - `test_dotdot_after_entering_proc_root`: Verifies `..` cannot escape after entering namespace.
+  - `test_idempotency_for_proc_paths`: Verifies canonicalization is idempotent.
+  - `test_double_slash_in_proc_path`: Tests double-slash edge cases.
+  - `test_proc_root_in_middle_of_chain`: Tests multi-hop chains ending in `/proc`.
+  - `test_proc_self_cwd_preserved`: Verifies `/proc/self/cwd` boundary preservation.
+  - `test_triple_chain_with_nonexisting`: Tests triple-depth chains with non-existing suffixes.
+
 ## [0.5.1] - 2025-12-11
 
 ### Fixed
