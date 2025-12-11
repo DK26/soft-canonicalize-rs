@@ -19,7 +19,7 @@ rust-version = "1.70.0"
 [dependencies]
 # Optional: fixes std::fs::canonicalize for Linux /proc/PID/root magic symlinks.
 # Enabled by default. Disable with `default-features = false` if you need std behavior.
-proc-canonicalize = { version = "0.0.2", optional = true }
+proc-canonicalize = { version = "0.0.3", optional = true }
 
 # Optional dunce dependency for path simplification (Windows-only)
 [target.'cfg(windows)'.dependencies]
