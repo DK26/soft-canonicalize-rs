@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.1] - 2025-12-11
+
+### Fixed
+
+- **Indirect symlinks to `/proc/PID/root` now correctly preserve namespace boundaries**
+  - Previously, symlinks pointing to `/proc/PID/root` (e.g., `/tmp/container -> /proc/self/root`) would resolve to `/`, bypassing namespace protection
+  - This was because the input path didn't lexically start with `/proc/`, so `proc-canonicalize` delegated to `std::fs::canonicalize`
+  - Upgraded `proc-canonicalize` dependency from 0.0.2 to 0.0.3 which fixes this security bypass
+  - **Security**: Critical fix for container boundary enforcement - prevents attackers from escaping container isolation via indirect symlinks
+
+### Added
+
+- **Regression test suite for indirect `/proc/PID/root` symlink bypass** (`tests/linux_proc_indirect_symlink.rs`)
+  - 10 tests covering: direct symlinks, chained symlinks, suffix paths, attack scenarios, anchored API
+  - Tests validate that namespace boundaries are preserved for indirect symlinks
+  - Covers `/proc/self/root`, `/proc/PID/root`, and `/proc/thread-self/root` variants
+
+### Changed
+
+- **Dependency**: Upgraded `proc-canonicalize` from 0.0.2 to 0.0.3
 
 ## [0.5.0] - 2025-12-10
 
