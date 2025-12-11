@@ -6,7 +6,7 @@
 
 use soft_canonicalize::soft_canonicalize;
 use std::os::unix::fs::symlink;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Test: Can we escape /proc/self/root by going INTO it then using multiple `..`?
 ///
@@ -25,9 +25,9 @@ fn test_dotdot_after_entering_proc_root() {
     match result {
         Ok(path) => {
             // Should NOT escape to / or outside /proc/self/root
-            assert_ne!(path, PathBuf::from("/"), "Escaped to /");
+            assert_ne!(path, Path::new("/"), "Escaped to /");
             assert!(
-                path.starts_with("/proc/self/root") || path == PathBuf::from("/proc/self/root"),
+                path.starts_with("/proc/self/root") || path == Path::new("/proc/self/root"),
                 "Should stay within /proc/self/root, got: {:?}",
                 path
             );
@@ -285,7 +285,7 @@ fn test_dotdot_in_nonexisting_suffix() {
 
     // Should preserve /proc/PID prefix (self resolves to PID)
     assert!(
-        result.starts_with(&expected_prefix),
+        result.starts_with(expected_prefix),
         "Should preserve /proc/PID/root prefix, got: {:?}",
         result
     );
@@ -327,7 +327,7 @@ fn test_proc_self_cwd_dotdot_behavior() {
     println!("Result: {:?}", result);
 
     // If we clamped it:
-    if result == PathBuf::from("/proc/self/cwd") {
+    if result == Path::new("/proc/self/cwd") {
         println!("Behavior: Clamped to cwd (treated as root)");
     } else {
         println!("Behavior: Resolved/Traversed to {:?}", result);
@@ -488,7 +488,7 @@ fn test_nested_proc_paths() {
             let pid = std::process::id();
             assert!(
                 path.starts_with("/proc/self/root")
-                    || path.starts_with(&format!("/proc/{}/root", pid)),
+                    || path.starts_with(format!("/proc/{}/root", pid)),
                 "Should preserve outer namespace, got: {:?}",
                 path
             );

@@ -442,7 +442,7 @@ fn test_dotdot_escape_from_proc_root() {
     // or /proc/self/root/../non_existing_file (if .. was preserved lexically)
     // Invalid result is /proc/self/non_existing_file
 
-    let escaped = result == PathBuf::from("/proc/self/non_existing_file");
+    let escaped = result == Path::new("/proc/self/non_existing_file");
 
     if escaped {
         panic!(

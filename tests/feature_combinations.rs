@@ -415,7 +415,7 @@ mod linux_tests {
         }
 
         let planned = proc_self_cwd.join("planned_dir").join("future_config.toml");
-        let result = soft_canonicalize(&planned).expect("should canonicalize planned path");
+        let result = soft_canonicalize(planned).expect("should canonicalize planned path");
 
         // Note: /proc/self resolves to /proc/{pid}, so the result will be /proc/{pid}/cwd/...
         let pid = process::id();
