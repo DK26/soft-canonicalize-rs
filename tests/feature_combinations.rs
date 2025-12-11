@@ -333,6 +333,42 @@ mod linux_tests {
         }
     }
 
+    /// Test /proc/PID/root handling with a non-existing suffix.
+    #[test]
+    fn test_proc_pid_root_nonexisting_suffix_behavior() {
+        let pid = process::id();
+        let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+
+        if !proc_pid_root.exists() {
+            println!("Skipping: /proc/{}/root doesn't exist", pid);
+            return;
+        }
+
+        let planned = proc_pid_root.join("planned_dir").join("future_config.toml");
+        let result = soft_canonicalize(&planned).expect("should canonicalize planned path");
+
+        #[cfg(feature = "proc-canonicalize")]
+        {
+            // With proc-canonicalize (default): preserve namespace boundary for non-existing suffixes
+            assert_eq!(
+                result, planned,
+                "With proc-canonicalize, should keep /proc/PID/root prefix for non-existing suffixes"
+            );
+        }
+
+        #[cfg(not(feature = "proc-canonicalize"))]
+        {
+            // Without proc-canonicalize: behaves like std, resolving /proc/PID/root to /
+            let expected = PathBuf::from("/")
+                .join("planned_dir")
+                .join("future_config.toml");
+            assert_eq!(
+                result, expected,
+                "Without proc-canonicalize, should resolve to / (std behavior) before appending suffix"
+            );
+        }
+    }
+
     /// Test /proc/PID/cwd handling.
     #[test]
     fn test_proc_pid_cwd_behavior() {
@@ -364,6 +400,49 @@ mod linux_tests {
             assert_eq!(
                 result, expected_canonical,
                 "Without proc-canonicalize, should resolve to actual cwd"
+            );
+        }
+    }
+
+    /// Test /proc/self/cwd with a non-existing suffix.
+    #[test]
+    fn test_proc_self_cwd_nonexisting_suffix_behavior() {
+        let proc_self_cwd = PathBuf::from("/proc/self/cwd");
+
+        if !proc_self_cwd.exists() {
+            println!("Skipping: /proc/self/cwd doesn't exist");
+            return;
+        }
+
+        let planned = proc_self_cwd.join("planned_dir").join("future_config.toml");
+        let result = soft_canonicalize(planned).expect("should canonicalize planned path");
+
+        // Note: /proc/self resolves to /proc/{pid}, so the result will be /proc/{pid}/cwd/...
+        let pid = process::id();
+        let _expected_with_proc = PathBuf::from(format!("/proc/{}/cwd", pid))
+            .join("planned_dir")
+            .join("future_config.toml");
+
+        #[cfg(feature = "proc-canonicalize")]
+        {
+            // With proc-canonicalize (default): keep the /proc/PID/cwd boundary intact
+            // (the /proc/self symlink resolves to /proc/{pid})
+            assert_eq!(
+                result, _expected_with_proc,
+                "With proc-canonicalize, should preserve /proc/PID/cwd prefix for non-existing suffixes"
+            );
+        }
+
+        #[cfg(not(feature = "proc-canonicalize"))]
+        {
+            // Without proc-canonicalize: resolve cwd normally then append the suffix
+            let expected_cwd =
+                std::fs::canonicalize(std::env::current_dir().expect("cwd should exist"))
+                    .expect("canonicalize cwd");
+            assert_eq!(
+                result,
+                expected_cwd.join("planned_dir").join("future_config.toml"),
+                "Without proc-canonicalize, should resolve /proc/self/cwd to the real cwd"
             );
         }
     }

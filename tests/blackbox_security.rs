@@ -319,12 +319,8 @@ fn test_symlink_escape_attempts() -> std::io::Result<()> {
                         println!("Non-existing symlink attack rejected: {e}");
                     }
                 }
-            } else {
-                println!(
-                    "Symlink creation failed for {}: {}",
-                    link_name,
-                    symlink_result.unwrap_err()
-                );
+            } else if let Err(e) = symlink_result {
+                println!("Symlink creation failed for {}: {}", link_name, e);
             }
         }
     }

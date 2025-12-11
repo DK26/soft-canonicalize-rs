@@ -412,6 +412,14 @@ pub(crate) fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<Pa
         }
         visited.push(current.as_os_str().to_os_string());
 
+        // On Linux with proc-canonicalize, check for magic paths BEFORE reading the link.
+        // If we are at /proc/PID/root or /proc/PID/cwd, we must NOT resolve it to its target
+        // (which is usually / or the cwd), but preserve it as a boundary.
+        #[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+        if is_proc_magic_link(&current) {
+            break;
+        }
+
         match fs::read_link(&current) {
             Ok(target) => {
                 depth += 1;
@@ -436,6 +444,79 @@ pub(crate) fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<Pa
     }
 
     Ok(current)
+}
+
+/// Checks if a path is a Linux magic link.
+///
+/// Supported patterns:
+/// - `/proc/PID/root` and `/proc/PID/cwd` (4 components)
+/// - `/proc/PID/task/TID/root` and `/proc/PID/task/TID/cwd` (6 components)
+///
+/// Where PID/TID can be numeric, "self", or "thread-self".
+#[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+pub(crate) fn is_proc_magic_link(path: &Path) -> bool {
+    use std::path::Component;
+
+    let comps: Vec<_> = path.components().collect();
+
+    // Pattern 1: /proc/PID/root or /proc/PID/cwd (4 components)
+    if comps.len() == 4 {
+        if let (
+            Component::RootDir,
+            Component::Normal(proc),
+            Component::Normal(pid),
+            Component::Normal(magic),
+        ) = (&comps[0], &comps[1], &comps[2], &comps[3])
+        {
+            if *proc != "proc" {
+                return false;
+            }
+            if !is_valid_pid_component(pid) {
+                return false;
+            }
+            let magic_str = magic.to_string_lossy();
+            return matches!(magic_str.as_ref(), "root" | "cwd");
+        }
+    }
+
+    // Pattern 2: /proc/PID/task/TID/root or /proc/PID/task/TID/cwd (6 components)
+    if comps.len() == 6 {
+        if let (
+            Component::RootDir,
+            Component::Normal(proc),
+            Component::Normal(pid),
+            Component::Normal(task),
+            Component::Normal(tid),
+            Component::Normal(magic),
+        ) = (
+            &comps[0], &comps[1], &comps[2], &comps[3], &comps[4], &comps[5],
+        ) {
+            if *proc != "proc" {
+                return false;
+            }
+            if !is_valid_pid_component(pid) {
+                return false;
+            }
+            if *task != "task" {
+                return false;
+            }
+            if !is_valid_pid_component(tid) {
+                return false;
+            }
+            let magic_str = magic.to_string_lossy();
+            return matches!(magic_str.as_ref(), "root" | "cwd");
+        }
+    }
+
+    false
+}
+
+/// Checks if a component is a valid PID/TID identifier.
+#[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+#[inline]
+fn is_valid_pid_component(s: &std::ffi::OsStr) -> bool {
+    let s_str = s.to_string_lossy();
+    s_str == "self" || s_str == "thread-self" || s_str.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Checks if a symlink is likely a system symlink that shouldn't consume depth budget

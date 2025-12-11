@@ -67,6 +67,18 @@ pub(crate) fn compute_existing_prefix(
             continue;
         }
         if c == std::ffi::OsStr::new("..") {
+            // Check if we are at a magic boundary (Linux /proc/PID/root)
+            // If so, ".." should NOT escape it (treat it as a root)
+            #[cfg(all(target_os = "linux", feature = "proc-canonicalize"))]
+            {
+                use crate::symlink::is_proc_magic_link;
+                if is_proc_magic_link(&path) {
+                    // We are at /proc/PID/root (or cwd). ".." stays here.
+                    count += 1;
+                    continue;
+                }
+            }
+
             if let Some(parent) = path.parent() {
                 if !parent.as_os_str().is_empty() {
                     path = parent.to_path_buf();

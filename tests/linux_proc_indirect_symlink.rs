@@ -1,13 +1,16 @@
 //! Tests for indirect symlinks to `/proc/PID/root` magic paths.
 //!
-//! This test suite validates the bug where symlinks pointing to `/proc/PID/root`
-//! bypass the protection because the input path doesn't lexically start with `/proc/`.
+//! This test suite validates security fixes for symlinks pointing to `/proc/PID/root`.
+//! These attacks bypass protection because the input path doesn't lexically start with `/proc/`.
 //!
-//! **These tests are expected to FAIL** until `proc-canonicalize` is upgraded
-//! to v0.0.3+ which fixes the indirect symlink bypass.
+//! **Attack vectors covered:**
+//! - Absolute indirect symlinks: `link -> /proc/self/root`
+//! - Relative symlinks resolving to proc: `link -> ../../../proc/self/root`
+//! - Chained symlinks: `link1 -> link2 -> /proc/self/root`
+//! - Task-level namespaces: `link -> /proc/PID/task/TID/root`
+//! - Non-existing suffixes: `link/non_existing_file`
 //!
-//! Related issue: `proc-canonicalize` indirect symlink bypass
-//! Fixed in: `proc-canonicalize` v0.0.3
+//! Fixed in: `proc-canonicalize` v0.0.3 (initial), v0.0.4 (comprehensive)
 //!
 //! Run with: `cargo test --test linux_proc_indirect_symlink -- --nocapture`
 
@@ -377,4 +380,186 @@ fn test_anchored_indirect_symlink_to_proc_root() {
             println!("Error: {} (may be expected if anchor resolution fails)", e);
         }
     }
+}
+
+/// Test indirect symlink to `/proc/self/root` with non-existing suffix.
+///
+/// This ensures that even when the path doesn't exist (triggering manual traversal),
+/// the namespace boundary is preserved.
+#[test]
+fn test_indirect_symlink_to_proc_self_root_non_existing() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let link_path = temp.path().join("link_to_proc_ne");
+
+    // Create symlink: link_to_proc_ne -> /proc/self/root
+    if let Err(e) = symlink("/proc/self/root", &link_path) {
+        println!("Skipping test: failed to create symlink: {}", e);
+        return;
+    }
+
+    // Test with non-existing suffix
+    let input = link_path.join("non_existing_file");
+    let result = soft_canonicalize(&input).expect("soft_canonicalize should succeed");
+
+    println!("Input:  {:?}", input);
+    println!("Result: {:?}", result);
+
+    // SECURITY ASSERTION: Result must NOT start with "/" (unless it's /proc...)
+    // It should start with /proc/self/root
+    assert!(
+        result.starts_with("/proc/self/root"),
+        "Expected /proc/self/root prefix, got: {:?}",
+        result
+    );
+}
+
+/// Test if `..` can escape `/proc/self/root` when manually traversing.
+///
+/// Scenario: `link` -> `/proc/self/root`, Input: `link/../non_existing`
+/// Expected: Should NOT resolve to `/proc/self` (which would be an escape).
+#[test]
+fn test_dotdot_escape_from_proc_root() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let link_path = temp.path().join("link_to_root");
+
+    // Create symlink: link_to_root -> /proc/self/root
+    if let Err(e) = symlink("/proc/self/root", &link_path) {
+        println!("Skipping test: failed to create symlink: {}", e);
+        return;
+    }
+
+    // Input: link_to_root/../non_existing_file
+    // If link_to_root resolves to /proc/self/root, ".." should NOT pop it to /proc/self
+    let input = link_path.join("..").join("non_existing_file");
+
+    let result = soft_canonicalize(&input).expect("soft_canonicalize should succeed");
+
+    println!("Input:  {:?}", input);
+    println!("Result: {:?}", result);
+
+    // Check if we escaped to /proc/self
+    // Valid result is /proc/self/root/non_existing_file (if .. was clamped)
+    // or /proc/self/root/../non_existing_file (if .. was preserved lexically)
+    // Invalid result is /proc/self/non_existing_file
+
+    let escaped = result == Path::new("/proc/self/non_existing_file");
+
+    if escaped {
+        panic!(
+            "SECURITY FAIL: Escaped /proc/self/root via '..' to {:?}",
+            result
+        );
+    }
+
+    // We expect it to stay within root
+    assert!(
+        result.starts_with("/proc/self/root"),
+        "Should stay within /proc/self/root, got: {:?}",
+        result
+    );
+}
+
+/// Test relative symlink that resolves to `/proc/self/root`.
+///
+/// Attack vector: `link -> ../../../proc/self/root`
+/// This was fixed in proc-canonicalize 0.0.4.
+#[test]
+fn test_relative_symlink_resolving_to_proc_self_root() {
+    // Create symlink directly in /tmp so we have a known depth
+    // /tmp/xxx/rel_link -> ../../proc/self/root
+    // From /tmp/xxx, ../../proc/self/root goes to / then proc/self/root
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let link_path = temp.path().join("rel_link");
+
+    // temp.path() is like /tmp/.tmpXXX (depth 2 from root)
+    // So we need: .. (to /tmp) -> .. (to /) -> proc/self/root
+    let relative_to_proc = "../../proc/self/root";
+
+    if let Err(e) = symlink(relative_to_proc, &link_path) {
+        println!("Skipping test: failed to create symlink: {}", e);
+        return;
+    }
+
+    // Verify the symlink target
+    match std::fs::read_link(&link_path) {
+        Ok(target) => println!("Symlink target: {:?}", target),
+        Err(e) => {
+            println!("Skipping test: cannot read symlink: {}", e);
+            return;
+        }
+    }
+
+    let result = soft_canonicalize(&link_path).expect("soft_canonicalize should succeed");
+
+    println!("Input:  {:?}", link_path);
+    println!("Result: {:?}", result);
+
+    // SECURITY ASSERTION: Must not resolve to "/"
+    assert_ne!(
+        result,
+        PathBuf::from("/"),
+        "SECURITY BUG: Relative symlink to /proc/self/root resolved to '/'"
+    );
+
+    // Should preserve /proc/.../root prefix (may be /proc/self/root or /proc/PID/root)
+    let result_str = result.to_string_lossy();
+    let is_proc_root = result_str.starts_with("/proc/self/root")
+        || result_str.starts_with("/proc/thread-self/root")
+        || (result_str.starts_with("/proc/")
+            && result_str.contains("/root")
+            && result_str
+                .strip_prefix("/proc/")
+                .and_then(|s| s.split('/').next())
+                .map(|pid| pid.chars().all(|c| c.is_ascii_digit()))
+                .unwrap_or(false));
+
+    assert!(
+        is_proc_root,
+        "Expected /proc/.../root prefix, got: {:?}",
+        result
+    );
+}
+
+/// Test task-level namespace symlink: `/proc/PID/task/TID/root`
+#[test]
+fn test_indirect_symlink_to_proc_pid_task_tid_root() {
+    let temp = tempfile::tempdir().expect("Failed to create temp dir");
+    let link_path = temp.path().join("task_root_link");
+
+    let pid = std::process::id();
+    // Use the main thread ID (same as PID on Linux for single-threaded)
+    let proc_task_root = format!("/proc/{}/task/{}/root", pid, pid);
+
+    // Check if task-level path exists
+    if !std::path::Path::new(&proc_task_root).exists() {
+        println!("Skipping: {} doesn't exist", proc_task_root);
+        return;
+    }
+
+    if let Err(e) = symlink(&proc_task_root, &link_path) {
+        println!("Skipping test: failed to create symlink: {}", e);
+        return;
+    }
+
+    let result = soft_canonicalize(&link_path).expect("soft_canonicalize should succeed");
+
+    println!("Input:  {:?}", link_path);
+    println!("Target: {}", proc_task_root);
+    println!("Result: {:?}", result);
+
+    // SECURITY ASSERTION: Must not resolve to "/"
+    assert_ne!(
+        result,
+        PathBuf::from("/"),
+        "SECURITY BUG: Indirect symlink to {} resolved to '/'",
+        proc_task_root
+    );
+
+    // Should preserve the /proc/PID/task/TID/root prefix
+    assert!(
+        result.starts_with(&proc_task_root),
+        "Expected {} prefix, got: {:?}",
+        proc_task_root,
+        result
+    );
 }

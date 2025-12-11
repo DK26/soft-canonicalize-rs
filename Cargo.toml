@@ -1,6 +1,6 @@
 [package]
 name = "soft-canonicalize"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Path canonicalization that works with non-existing paths."
@@ -19,7 +19,7 @@ rust-version = "1.70.0"
 [dependencies]
 # Optional: fixes std::fs::canonicalize for Linux /proc/PID/root magic symlinks.
 # Enabled by default. Disable with `default-features = false` if you need std behavior.
-proc-canonicalize = { version = "0.0.3", optional = true }
+proc-canonicalize = { version = "0.0.4", optional = true }
 
 # Optional dunce dependency for path simplification (Windows-only)
 [target.'cfg(windows)'.dependencies]
