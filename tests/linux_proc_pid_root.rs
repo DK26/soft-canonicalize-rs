@@ -247,3 +247,284 @@ fn test_summary_namespace_canonicalization_fixed() {
     assert_eq!(result, proc_self_root, "Fix verification failed!");
     println!(" Fix verified: /proc/self/root is preserved correctly");
 }
+
+// ============================================================================
+// Subdirectory Anchor Tests (Anchoring INSIDE /proc/PID/root)
+// ============================================================================
+
+/// Test anchoring to a subdirectory inside /proc/PID/root.
+///
+/// This verifies that anchored_canonicalize works correctly when the anchor
+/// is not the namespace root itself, but a directory within it.
+///
+/// Example use case: A container tool that wants to restrict access to
+/// /proc/PID/root/var/www (the web root inside the container).
+#[test]
+#[cfg(feature = "anchored")]
+fn test_anchored_subdirectory_inside_proc_root() {
+    let pid = process::id();
+    let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+
+    // Create an anchor to a subdirectory inside the namespace
+    // Using /tmp since it's likely to exist
+    let subdir_anchor = proc_pid_root.join("tmp");
+
+    if !subdir_anchor.exists() {
+        println!("Skipping: {} doesn't exist", subdir_anchor.display());
+        return;
+    }
+
+    // Simple path resolution within the subdirectory
+    let result = anchored_canonicalize(&subdir_anchor, "subdir/file.txt");
+
+    println!("Anchor:    {:?}", subdir_anchor);
+    println!("Candidate: subdir/file.txt");
+    println!("Result:    {:?}", result);
+
+    match result {
+        Ok(path) => {
+            // Result should preserve /proc/PID/root prefix
+            assert!(
+                path.starts_with(&proc_pid_root),
+                "Result should preserve /proc/PID/root prefix: {:?}",
+                path
+            );
+
+            // Result should be within the subdirectory anchor
+            // The anchor is soft-canonicalized, so check component-wise
+            let path_str = path.to_string_lossy();
+            assert!(
+                path_str.contains("/tmp/") || path_str.ends_with("/tmp"),
+                "Result should be within /tmp anchor: {:?}",
+                path
+            );
+
+            // Should contain the requested file
+            assert!(
+                path_str.contains("file.txt"),
+                "Result should contain requested filename: {:?}",
+                path
+            );
+        }
+        Err(e) => {
+            println!("Error (may be acceptable): {}", e);
+        }
+    }
+}
+
+/// Test escape attempt from subdirectory anchor inside /proc/PID/root.
+///
+/// Verifies that `..` traversal from a subdirectory anchor is clamped,
+/// AND that the /proc/PID/root prefix is preserved.
+#[test]
+#[cfg(feature = "anchored")]
+fn test_anchored_subdirectory_escape_attempt_clamped() {
+    let pid = process::id();
+    let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+    let subdir_anchor = proc_pid_root.join("tmp");
+
+    if !subdir_anchor.exists() {
+        println!("Skipping: {} doesn't exist", subdir_anchor.display());
+        return;
+    }
+
+    // Try to escape the subdirectory anchor using ..
+    // This should be clamped to the anchor, not escape to /proc/PID/root or beyond
+    let escape_attempt = "../../../etc/passwd";
+    let result = anchored_canonicalize(&subdir_anchor, escape_attempt);
+
+    println!("Anchor:         {:?}", subdir_anchor);
+    println!("Escape attempt: {:?}", escape_attempt);
+    println!("Result:         {:?}", result);
+
+    match result {
+        Ok(path) => {
+            // CRITICAL: Must preserve /proc/PID/root prefix
+            assert!(
+                path.starts_with(&proc_pid_root),
+                "SECURITY: Result must preserve /proc/PID/root prefix, got: {:?}",
+                path
+            );
+
+            // Should be clamped to the subdirectory anchor (/tmp)
+            let canonical_anchor =
+                soft_canonicalize(&subdir_anchor).expect("anchor should canonicalize");
+            assert!(
+                path.starts_with(&canonical_anchor),
+                "Escape should be clamped to anchor {:?}, got: {:?}",
+                canonical_anchor,
+                path
+            );
+
+            // The escaped path should resolve to anchor/etc/passwd
+            let path_str = path.to_string_lossy();
+            assert!(
+                path_str.contains("etc/passwd") || path_str.ends_with("etc/passwd"),
+                "Clamped path should contain etc/passwd: {:?}",
+                path
+            );
+
+            println!("✓ Escape attempt correctly clamped to subdirectory anchor");
+        }
+        Err(e) => {
+            // Error is also acceptable (blocked traversal)
+            println!("Blocked with error (acceptable): {}", e);
+        }
+    }
+}
+
+/// Test deeply nested subdirectory anchor inside /proc/PID/root.
+///
+/// Verifies behavior with anchors like /proc/PID/root/var/lib/app/data
+#[test]
+#[cfg(feature = "anchored")]
+fn test_anchored_deep_subdirectory_inside_proc_root() {
+    let pid = process::id();
+    let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+
+    // Use a deeper path - /usr/share is commonly present
+    let deep_anchor = proc_pid_root.join("usr").join("share");
+
+    if !deep_anchor.exists() {
+        println!("Skipping: {} doesn't exist", deep_anchor.display());
+        return;
+    }
+
+    // Try to escape back to proc_pid_root level
+    let escape_to_proc_root = "../../etc/passwd";
+    let result = anchored_canonicalize(&deep_anchor, escape_to_proc_root);
+
+    println!("Deep anchor:    {:?}", deep_anchor);
+    println!("Escape attempt: {:?}", escape_to_proc_root);
+    println!("Result:         {:?}", result);
+
+    match result {
+        Ok(path) => {
+            // Must preserve /proc/PID/root prefix
+            assert!(
+                path.starts_with(&proc_pid_root),
+                "SECURITY: Must preserve /proc/PID/root prefix: {:?}",
+                path
+            );
+
+            // Should be clamped to the deep anchor
+            let canonical_anchor =
+                soft_canonicalize(&deep_anchor).expect("anchor should canonicalize");
+            assert!(
+                path.starts_with(&canonical_anchor),
+                "Should be clamped to deep anchor {:?}, got: {:?}",
+                canonical_anchor,
+                path
+            );
+
+            println!("✓ Deep subdirectory anchor correctly enforced");
+        }
+        Err(e) => {
+            println!("Blocked with error (acceptable): {}", e);
+        }
+    }
+}
+
+/// Test that /proc prefix is preserved even with non-existing subdirectory anchor.
+///
+/// Verifies soft-canonicalize behavior when anchor contains non-existing components.
+#[test]
+#[cfg(feature = "anchored")]
+fn test_anchored_nonexisting_subdirectory_inside_proc_root() {
+    let pid = process::id();
+    let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+
+    if !proc_pid_root.exists() {
+        println!("Skipping: /proc/{}/root doesn't exist", pid);
+        return;
+    }
+
+    // Anchor to a non-existing subdirectory inside the namespace
+    let nonexisting_anchor = proc_pid_root
+        .join("var")
+        .join("fictional_app_12345")
+        .join("data");
+
+    let result = anchored_canonicalize(&nonexisting_anchor, "config/settings.json");
+
+    println!("Non-existing anchor: {:?}", nonexisting_anchor);
+    println!("Candidate:           config/settings.json");
+    println!("Result:              {:?}", result);
+
+    match result {
+        Ok(path) => {
+            // Must preserve /proc/PID/root prefix even for non-existing paths
+            assert!(
+                path.starts_with(&proc_pid_root),
+                "CRITICAL: Must preserve /proc/PID/root even for non-existing anchors: {:?}",
+                path
+            );
+
+            // Should contain our fictional path components
+            let path_str = path.to_string_lossy();
+            assert!(
+                path_str.contains("fictional_app_12345"),
+                "Should preserve non-existing anchor components: {:?}",
+                path
+            );
+            assert!(
+                path_str.contains("settings.json"),
+                "Should contain requested filename: {:?}",
+                path
+            );
+
+            println!("✓ Non-existing subdirectory anchor preserves /proc prefix");
+        }
+        Err(e) => {
+            println!("Error: {}", e);
+            // For non-existing anchors, error might be acceptable depending on implementation
+        }
+    }
+}
+
+/// Test escape from non-existing subdirectory stays within /proc boundary.
+#[test]
+#[cfg(feature = "anchored")]
+fn test_anchored_escape_from_nonexisting_subdirectory() {
+    let pid = process::id();
+    let proc_pid_root = PathBuf::from(format!("/proc/{}/root", pid));
+
+    if !proc_pid_root.exists() {
+        println!("Skipping: /proc/{}/root doesn't exist", pid);
+        return;
+    }
+
+    // Non-existing anchor
+    let nonexisting_anchor = proc_pid_root.join("opt").join("fake_service");
+
+    // Aggressive escape attempt
+    let escape_attempt = "../../../../../../../../etc/shadow";
+    let result = anchored_canonicalize(&nonexisting_anchor, escape_attempt);
+
+    println!("Non-existing anchor: {:?}", nonexisting_anchor);
+    println!("Escape attempt:      {:?}", escape_attempt);
+    println!("Result:              {:?}", result);
+
+    match result {
+        Ok(path) => {
+            // SECURITY CRITICAL: Must NEVER escape /proc/PID/root
+            assert!(
+                path.starts_with(&proc_pid_root),
+                "SECURITY VIOLATION: Escaped /proc/PID/root boundary! Got: {:?}",
+                path
+            );
+
+            // Should NOT be the host's /etc/shadow
+            assert_ne!(
+                path,
+                PathBuf::from("/etc/shadow"),
+                "SECURITY VIOLATION: Resolved to host path!"
+            );
+
+            println!("✓ Aggressive escape clamped to /proc boundary");
+        }
+        Err(e) => {
+            println!("Blocked with error (good): {}", e);
+        }
+    }
+}
