@@ -66,10 +66,18 @@ function Run-Check {
     
     $startTime = Get-Date
     
+    # Temporarily allow errors so we can check $LASTEXITCODE manually
+    # (cargo writes progress to stderr which triggers $ErrorActionPreference = "Stop")
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    
     try {
-        Invoke-Expression $Command
-        if ($LASTEXITCODE -ne 0) {
-            throw "Command failed with exit code $LASTEXITCODE"
+        Invoke-Expression "$Command 2>&1" | ForEach-Object { Write-Host $_ }
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldErrorAction
+        
+        if ($exitCode -ne 0) {
+            throw "Command failed with exit code $exitCode"
         }
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
@@ -77,6 +85,7 @@ function Run-Check {
         Write-Host ""
         return $true
     } catch {
+        $ErrorActionPreference = $oldErrorAction
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
         Write-Host "FAILED: $Name failed after $([math]::Round($duration))s" -ForegroundColor Red
@@ -96,10 +105,17 @@ function Run-Fix {
     
     $startTime = Get-Date
     
+    # Temporarily allow errors so we can check $LASTEXITCODE manually
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    
     try {
-        Invoke-Expression $Command
-        if ($LASTEXITCODE -ne 0) {
-            throw "Command failed with exit code $LASTEXITCODE"
+        Invoke-Expression "$Command 2>&1" | ForEach-Object { Write-Host $_ }
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldErrorAction
+        
+        if ($exitCode -ne 0) {
+            throw "Command failed with exit code $exitCode"
         }
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
@@ -107,6 +123,7 @@ function Run-Fix {
         Write-Host ""
         return $true
     } catch {
+        $ErrorActionPreference = $oldErrorAction
         $endTime = Get-Date
         $duration = ($endTime - $startTime).TotalSeconds
         Write-Host "WARNING: $Name auto-fix failed after $([math]::Round($duration))s" -ForegroundColor Yellow

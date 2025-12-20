@@ -1,13 +1,35 @@
 //! Regression test for junction following in anchored_canonicalize.
 //!
-//! Bug: When a junction inside the anchor points to a directory also within the anchor,
-//! the path resolution was incorrectly handling the prefix mismatch between the anchor
-//! (\\?\C:\...) and the junction target (C:\...), causing path duplication or CWD insertion.
+//! ## The Problem
 //!
-//! Fix: Use component-aware comparison that treats VerbatimDisk(C) and Disk(C) as equivalent
-//! when checking if the junction target is within the anchor.
+//! When a junction inside the anchor points to a directory also within the anchor,
+//! path resolution incorrectly handles the prefix mismatch between:
+//! - Anchor (verbatim format): `\\?\C:\Users\...`
+//! - Junction target (non-verbatim): `C:\Users\...`
 //!
-//! This test suite ensures the bug can never return by testing:
+//! This caused `strip_prefix` to fail, leading to path duplication or CWD insertion.
+//!
+//! ## Root Cause
+//!
+//! Junction targets are ALWAYS stored/returned by Windows in non-verbatim format,
+//! regardless of what format you pass to `junction::create()`. This is because NTFS
+//! stores junction targets in NT namespace format (`\??\C:\...`), and when read back,
+//! the `\??\` prefix is stripped to give `C:\...`.
+//!
+//! ## Our Fix
+//!
+//! Use component-aware comparison in `src/symlink.rs` that treats `VerbatimDisk(C)`
+//! and `Disk(C)` as equivalent when checking if a junction target is within the anchor.
+//!
+//! ## Junction Crate Fork (DK26/junction)
+//!
+//! This test uses the DK26/junction fork which fixes tesuji/junction#30 - a separate
+//! issue where passing verbatim paths to `junction::create()` caused BROKEN junctions
+//! due to double-prefix corruption (`\??\\\?\C:\...`). That fix ensures junctions are
+//! created correctly, but does NOT change the non-verbatim format of returned targets.
+//!
+//! ## Test Coverage
+//!
 //! - Basic junction following within anchor
 //! - File access through junctions
 //! - Junction escape clamping
@@ -50,28 +72,18 @@ macro_rules! assert_std_compat {
     };
 }
 
-fn create_junction(junction: &Path, target: &Path) -> std::io::Result<()> {
-    let output = std::process::Command::new("cmd")
-        .args([
-            "/c",
-            "mklink",
-            "/J",
-            &junction.to_string_lossy(),
-            &target.to_string_lossy(),
-        ])
-        .output()?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "mklink /J failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ),
-        ))
-    }
+/// Create a junction using the junction crate.
+///
+/// Note: We don't need to canonicalize the target because:
+/// 1. Junction targets are ALWAYS stored/returned in non-verbatim format (C:\...)
+///    regardless of what format you pass to create()
+/// 2. The junction crate fork (DK26/junction) fixes issue #30 where passing
+///    verbatim paths caused BROKEN junctions - but even with the fix,
+///    read_link() still returns non-verbatim paths
+/// 3. Our workaround in src/symlink.rs handles the format mismatch between
+///    verbatim anchors and non-verbatim junction targets
+fn create_junction(junction_path: &Path, target: &Path) -> std::io::Result<()> {
+    junction::create(target, junction_path)
 }
 
 fn create_symlink_dir(link: &Path, target: &Path) -> std::io::Result<bool> {
