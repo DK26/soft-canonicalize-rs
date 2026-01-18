@@ -28,7 +28,7 @@ pub fn create_symlink_or_junction<P: AsRef<Path>, Q: AsRef<Path>>(
         Ok(_) => Ok(true),
         Err(e) => {
             if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) {
-                match junction::create(target, link) {
+                match junction_verbatim::create(target, link) {
                     Ok(_) => Ok(true),
                     Err(_) => Ok(false),
                 }
