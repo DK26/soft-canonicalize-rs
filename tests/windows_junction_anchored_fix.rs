@@ -12,7 +12,7 @@
 //! ## Root Cause
 //!
 //! Junction targets are ALWAYS stored/returned by Windows in non-verbatim format,
-//! regardless of what format you pass to `junction::create()`. This is because NTFS
+//! regardless of what format you pass to `junction_verbatim::create()`. This is because NTFS
 //! stores junction targets in NT namespace format (`\??\C:\...`), and when read back,
 //! the `\??\` prefix is stripped to give `C:\...`.
 //!
@@ -24,7 +24,7 @@
 //! ## Junction Crate Fork (DK26/junction)
 //!
 //! This test uses the DK26/junction fork which fixes tesuji/junction#30 - a separate
-//! issue where passing verbatim paths to `junction::create()` caused BROKEN junctions
+//! issue where passing verbatim paths to `junction_verbatim::create()` caused BROKEN junctions
 //! due to double-prefix corruption (`\??\\\?\C:\...`). That fix ensures junctions are
 //! created correctly, but does NOT change the non-verbatim format of returned targets.
 //!
@@ -83,7 +83,7 @@ macro_rules! assert_std_compat {
 /// 3. Our workaround in src/symlink.rs handles the format mismatch between
 ///    verbatim anchors and non-verbatim junction targets
 fn create_junction(junction_path: &Path, target: &Path) -> std::io::Result<()> {
-    junction::create(target, junction_path)
+    junction_verbatim::create(target, junction_path)
 }
 
 fn create_symlink_dir(link: &Path, target: &Path) -> std::io::Result<bool> {

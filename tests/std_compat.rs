@@ -54,7 +54,7 @@ fn symlink_dir(original: &Path, link: &Path) -> std::io::Result<()> {
                 if e.kind() == std::io::ErrorKind::PermissionDenied
                     || e.raw_os_error() == Some(1314)
                 {
-                    match junction::create(original, link) {
+                    match junction_verbatim::create(original, link) {
                         Ok(_) => Ok(()),
                         Err(je) => Err(std::io::Error::new(
                             std::io::ErrorKind::PermissionDenied,
