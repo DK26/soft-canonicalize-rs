@@ -1,6 +1,6 @@
 [package]
 name = "soft-canonicalize"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 authors = ["David Krasnitsky <dikaveman@gmail.com>"]
 description = "Path canonicalization that works with non-existing paths."
@@ -35,7 +35,7 @@ tempfile = "=3.21" # Do not update
 # We cannot use `junction` v1.4.1 crate because that would require
 # us to bump our MSRV to Rust 1.71, and we only use this crate for testing.
 # So, we stick to the workaround `junction-verbatim`
-junction-verbatim = "=1.3.0" 
+junction-verbatim = "=1.3.0"
 
 [features]
 default = ["proc-canonicalize"]
