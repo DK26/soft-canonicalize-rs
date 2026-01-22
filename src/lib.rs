@@ -13,11 +13,11 @@
 //! - **⚡ Fast** - Optimized performance with minimal allocations and syscalls
 //! - **✅ Compatible** - 100% behavioral match with `std::fs::canonicalize` for existing paths, with optional UNC simplification via `dunce` feature (Windows)
 //! - **🎯 Virtual filesystem support** - Optional `anchored` feature for bounded canonicalization within directory boundaries
-//! - **🔒 Robust** - 495 comprehensive tests covering edge cases and security scenarios
+//! - **🔒 Robust** - 530+ comprehensive tests covering edge cases and security scenarios
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
-//! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
 //! - **💾 Exotic filesystem support** - Works on RAM disks, network drives, Docker volumes, and other non-standard filesystems
+//! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
 //!
 //! ## Lexical vs. Filesystem-Based Resolution
 //!
@@ -272,7 +272,7 @@
 //!
 //! ## Testing
 //!
-//! 495 tests including:
+//! 530+ tests including:
 //! - std::fs::canonicalize compatibility tests (existing paths)
 //! - Path traversal and robustness tests
 //! - Python pathlib-inspired behavior checks
