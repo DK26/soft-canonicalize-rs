@@ -17,6 +17,7 @@
 //! - **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection
 //! - **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling
 //! - **🔧 Zero dependencies** - Optional features may add minimal dependencies
+//! - **💾 Exotic filesystem support** - Works on RAM disks, network drives, Docker volumes, and other non-standard filesystems
 //!
 //! ## Lexical vs. Filesystem-Based Resolution
 //!
@@ -252,6 +253,22 @@
 //!   - With `dunce` feature: returns simplified paths (`C:\…`) when safe
 //! - Unix-like systems: standard absolute and relative path semantics
 //! - UNC floors and device namespaces are preserved and respected
+//!
+//! ### Exotic Filesystem Support
+//!
+//! Unlike pure `std::fs::canonicalize`, this crate gracefully handles paths on filesystems where
+//! canonicalization may fail unexpectedly ([rust-lang/rust#45067], [rust-lang/rust#48249], etc.):
+//!
+//! - **RAM disks** (ImDisk, etc.): Common issue where `std::fs::canonicalize` returns `os error 1`
+//! - **Network drives**: May return `os error 1` (Incorrect function)
+//! - **Docker volumes**: Container paths that fail standard canonicalization
+//! - **Non-native filesystems**: Ext4 via Ext2Fsd on Windows, etc.
+//!
+//! When `std::fs::canonicalize` fails on these filesystems, we fall back to our prefix-discovery
+//! logic, still resolving symlinks where possible while handling the non-existing suffix correctly.
+//!
+//! [rust-lang/rust#45067]: https://github.com/rust-lang/rust/issues/45067
+//! [rust-lang/rust#48249]: https://github.com/rust-lang/rust/issues/48249
 //!
 //! ## Testing
 //!

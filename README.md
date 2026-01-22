@@ -20,6 +20,7 @@ Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`
 **🔒 Robust** - 500+ comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
+**💾 Exotic filesystem support** - Works on RAM disks, network drives, Docker volumes ([rust-lang/rust#45067](https://github.com/rust-lang/rust/issues/45067), [#48249](https://github.com/rust-lang/rust/issues/48249))  
 **🔧 Zero dependencies** - Optional features may add minimal dependencies
 
 ## Lexical vs. Filesystem-Based Resolution
