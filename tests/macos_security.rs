@@ -15,7 +15,7 @@
 use soft_canonicalize::soft_canonicalize;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tempfile::TempDir;
 
 // ─── 1. Unicode NFD Normalization (APFS/HFS+) ──────────────────────────────
@@ -553,16 +553,13 @@ mod resource_forks {
         let result = soft_canonicalize(&rsrc_path);
         // The resource fork may or may not exist, but the function must not panic
         // and should either resolve it or return a clean error
-        match result {
-            Ok(p) => {
-                // If it resolves, verify it's sensible
-                let p_str = p.to_string_lossy();
-                assert!(
-                    p_str.contains("test.txt"),
-                    "Resource fork path should reference the base file: {p_str}"
-                );
-            }
-            Err(_) => {} // Error is fine if resource forks aren't supported
+        if let Ok(p) = result {
+            // If it resolves, verify it's sensible
+            let p_str = p.to_string_lossy();
+            assert!(
+                p_str.contains("test.txt"),
+                "Resource fork path should reference the base file: {p_str}"
+            );
         }
         Ok(())
     }
@@ -579,15 +576,12 @@ mod resource_forks {
         // `..namedfork` is NOT `..` — it should not traverse up
         let path = dir.join("..namedfork");
         let result = soft_canonicalize(&path);
-        match result {
-            Ok(p) => {
-                // Must not resolve to tmp.path() (parent) — ..namedfork is not ..
-                assert!(
-                    p.starts_with(std::fs::canonicalize(&dir).unwrap_or(dir.clone())),
-                    "..namedfork must not act as parent traversal: {p:?}"
-                );
-            }
-            Err(_) => {} // Error is acceptable (component doesn't exist)
+        if let Ok(p) = result {
+            // Must not resolve to tmp.path() (parent) — ..namedfork is not ..
+            assert!(
+                p.starts_with(std::fs::canonicalize(&dir).unwrap_or(dir.clone())),
+                "..namedfork must not act as parent traversal: {p:?}"
+            );
         }
         Ok(())
     }
@@ -712,15 +706,12 @@ mod dev_fd {
         let path = Path::new("/dev/fd/999999/evil/passwd");
         let result = soft_canonicalize(path);
         // Must not panic — likely errors since fd 999999 doesn't exist
-        match result {
-            Ok(p) => {
-                // Should not resolve to something outside /dev
-                assert!(
-                    p.starts_with("/dev"),
-                    "/dev/fd traversal must stay in /dev: {p:?}"
-                );
-            }
-            Err(_) => {} // Expected
+        if let Ok(p) = result {
+            // Should not resolve to something outside /dev
+            assert!(
+                p.starts_with("/dev"),
+                "/dev/fd traversal must stay in /dev: {p:?}"
+            );
         }
         Ok(())
     }
@@ -978,13 +969,10 @@ mod macos_edge_cases {
         let long_name = "\u{00E9}".repeat(120) + ".t";
         let file = tmp.path().join(&long_name);
 
-        match fs::write(&file, b"data") {
-            Ok(()) => {
-                let result = soft_canonicalize(&file)?;
-                let expected = std::fs::canonicalize(&file)?;
-                assert_eq!(result, expected);
-            }
-            Err(_) => {} // Name too long on this filesystem — skip
+        if let Ok(()) = fs::write(&file, b"data") {
+            let result = soft_canonicalize(&file)?;
+            let expected = std::fs::canonicalize(&file)?;
+            assert_eq!(result, expected);
         }
         Ok(())
     }
