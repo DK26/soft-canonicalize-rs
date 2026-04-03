@@ -463,8 +463,15 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     #[cfg(windows)]
     validate_windows_ads_layout(&normalized_path)?;
 
-    // Stage 3: fast-path — try fs::canonicalize on the lexically-normalized path as well
-    if normalized_path != absolute_path {
+    // Stage 3: fast-path — try fs::canonicalize on the lexically-normalized path as well.
+    // SAFETY: Skip when the original path contains ".." components. Lexical normalization
+    // collapses "symlink/.." without following the symlink, which can resolve to a completely
+    // different (wrong) existing path. The slow path (Stages 4-7) handles ".." correctly by
+    // resolving symlinks before climbing. See: https://github.com/DK26/soft-canonicalize-rs/issues/53
+    let has_parent_dir = absolute_path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir));
+    if normalized_path != absolute_path && !has_parent_dir {
         match fs_canonicalize(&normalized_path) {
             Ok(p) => return Ok(p),
             Err(e) => match e.kind() {
