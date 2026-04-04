@@ -139,21 +139,11 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     // CLAMP: Convert absolute symlink target to be relative to anchor
                     // This implements virtual filesystem semantics
 
-                    // On Windows, we DON'T canonicalize absolute symlink targets at all
-                    // because canonicalization expands their full path, breaking the clamping logic.
-                    // The target will be stripped and clamped as-is, which is correct for
-                    // virtual filesystem semantics where we treat the symlink as if it were
-                    // absolute within the virtual root (anchor).
-                    //
-                    // Note: This means symlink targets may contain 8.3 short names in the
-                    // clamped result, but this is acceptable because:
-                    // 1. The paths are still valid and accessible
-                    // 2. Trying to expand them would require knowing the "virtual root" context
-                    // 3. For relative symlinks, we handle 8.3 expansion separately
-                    #[cfg(not(windows))]
-                    let target = target.clone();
-
-                    #[cfg(windows)]
+                    // We don't canonicalize absolute symlink targets because canonicalization
+                    // expands the full path, breaking the clamping logic. The target is
+                    // stripped and clamped as-is (virtual filesystem semantics — anchor is root).
+                    // On Windows this means junction targets may retain 8.3 short names in the
+                    // clamped result; that is acceptable since the paths remain valid.
                     let target = target.clone();
 
                     // Try to strip anchor prefix from target using component-aware comparison
@@ -305,8 +295,7 @@ pub(crate) fn resolve_anchored_symlink_chain(
                                 .zip(anchor_comps.iter())
                                 .all(|(c, a)| components_equal(c, a));
 
-                        #[cfg_attr(not(windows), allow(unused_variables))]
-                        let was_clamped = if !is_within_anchor {
+                        let _was_clamped = if !is_within_anchor {
                             // Find longest common prefix by comparing components
                             let mut common_depth = 0;
                             for (a, c) in anchor_comps.iter().zip(current_comps.iter()) {
@@ -338,7 +327,7 @@ pub(crate) fn resolve_anchored_symlink_chain(
                         // the path is a virtual path within the anchor and should NOT be
                         // resolved to a real system path.
                         #[cfg(windows)]
-                        if !was_clamped && current.exists() {
+                        if !_was_clamped && current.exists() {
                             use std::path::Prefix;
 
                             // Check if anchor has extended-length prefix (\\?\)
@@ -460,52 +449,37 @@ pub(crate) fn is_proc_magic_link(path: &Path) -> bool {
     let comps: Vec<_> = path.components().collect();
 
     // Pattern 1: /proc/PID/root or /proc/PID/cwd (4 components)
-    if comps.len() == 4 {
-        if let (
-            Component::RootDir,
-            Component::Normal(proc),
-            Component::Normal(pid),
-            Component::Normal(magic),
-        ) = (&comps[0], &comps[1], &comps[2], &comps[3])
-        {
-            if *proc != "proc" {
-                return false;
-            }
-            if !is_valid_pid_component(pid) {
-                return false;
-            }
-            let magic_str = magic.to_string_lossy();
-            return matches!(magic_str.as_ref(), "root" | "cwd");
+    if let [Component::RootDir, Component::Normal(proc), Component::Normal(pid), Component::Normal(magic)] =
+        comps.as_slice()
+    {
+        if *proc != "proc" {
+            return false;
         }
+        if !is_valid_pid_component(pid) {
+            return false;
+        }
+        let magic_str = magic.to_string_lossy();
+        return matches!(magic_str.as_ref(), "root" | "cwd");
     }
 
     // Pattern 2: /proc/PID/task/TID/root or /proc/PID/task/TID/cwd (6 components)
-    if comps.len() == 6 {
-        if let (
-            Component::RootDir,
-            Component::Normal(proc),
-            Component::Normal(pid),
-            Component::Normal(task),
-            Component::Normal(tid),
-            Component::Normal(magic),
-        ) = (
-            &comps[0], &comps[1], &comps[2], &comps[3], &comps[4], &comps[5],
-        ) {
-            if *proc != "proc" {
-                return false;
-            }
-            if !is_valid_pid_component(pid) {
-                return false;
-            }
-            if *task != "task" {
-                return false;
-            }
-            if !is_valid_pid_component(tid) {
-                return false;
-            }
-            let magic_str = magic.to_string_lossy();
-            return matches!(magic_str.as_ref(), "root" | "cwd");
+    if let [Component::RootDir, Component::Normal(proc), Component::Normal(pid), Component::Normal(task), Component::Normal(tid), Component::Normal(magic)] =
+        comps.as_slice()
+    {
+        if *proc != "proc" {
+            return false;
         }
+        if !is_valid_pid_component(pid) {
+            return false;
+        }
+        if *task != "task" {
+            return false;
+        }
+        if !is_valid_pid_component(tid) {
+            return false;
+        }
+        let magic_str = magic.to_string_lossy();
+        return matches!(magic_str.as_ref(), "root" | "cwd");
     }
 
     false

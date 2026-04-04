@@ -56,7 +56,10 @@ pub(crate) fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {
                         ),
                     ));
                 }
-                let stream_part = parts[1];
+                let stream_part = match parts.get(1) {
+                    Some(s) => *s,
+                    None => continue, // unreachable: parts.len() >= 2 per check above
+                };
                 if stream_part.is_empty()
                     || stream_part == "."
                     || stream_part == ".."
@@ -118,7 +121,7 @@ pub(crate) fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {
                     ));
                 }
                 // Disallow separators or traversal markers anywhere after first colon
-                let after_first_colon = &s[s.find(':').unwrap() + 1..];
+                let after_first_colon = s.find(':').and_then(|i| s.get(i + 1..)).unwrap_or("");
                 if after_first_colon.contains(['\\', '/'])
                     || after_first_colon.contains("..\\")
                     || after_first_colon.contains("../")
@@ -165,7 +168,10 @@ pub(crate) fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {
                     ));
                 }
                 if parts.len() == 3 {
-                    let ty = parts[2];
+                    let ty = match parts.get(2) {
+                        Some(t) => *t,
+                        None => continue, // unreachable: parts.len() == 3
+                    };
                     // Allow NTFS stream type tokens: $ + alphanumeric/underscore (case-insensitive for real types like $DATA, $BITMAP)
                     let valid_type = ty.starts_with('$')
                         && ty.len() > 1

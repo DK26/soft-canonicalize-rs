@@ -1,41 +1,30 @@
 # AGENTS: AI Contributor Guide
 
-This repo contains a zero-dependency Rust crate that canonicalizes paths when suffixes don't exist. It must match `std::fs::canonic## Coding Guideline## Coding Guidelines
-
-- Style: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
-- Error handling: Use `error_with_path` to attach offending path context; ensure `SoftCanonicalizeError::detail` is human-readable.
-- Allocation: Avoid temporary `String`s; prefer `PathBuf`, `OsString`, and component streaming.
-- Syscalls: Minimize `metadata`/`canonicalize` calls; keep fast-paths and early exits intact.
-- Performance: When adding or modifying functions in critical hot-path sections (e.g., path component iteration, validation checks, normalization helpers), consider using `#[inline]` to allow the compiler to optimize away function call overhead. Use `#[inline(always)]` sparingly and only when profiling confirms benefit.
-- Platform cfg: Keep Windows/Unix branches correct and side-effect free; don't introduce behavioral drift between platforms.
-- Dependencies: Do not add runtime dependencies. If you believe one is strictly necessary, open an issue first.le: Follow `rustfmt` defaults; keep code clear and small; avoid over-abstraction.
-- Error handling: Use `error_with_path` to attach offending path context; ensu## Common Pitfalls (avoid)
-
-- Reordering fast-paths: Do not remove/flip the early `fs::canonicalize` checks vs lexical normalization.
-- Over-normalizing device/UNC prefixes: preserve verbatim/device prefixes; don't convert device namespaces.
-- Popping too far: Never ascend past root/share/device floors.
-- Eager symlink adoption: Only adopt resolved symlink path if target or its parent exists; otherwise keep the link as anchor.
-- Dropping error context: Don't return bare `io::Error` without the payload created by `error_with_path`.
-- **Using dunce without platform guard**: Never use `#[cfg(feature = "dunce")]` alone when calling `dunce::` functions. Always use `#[cfg(all(feature = "dunce", windows))]` because dunce is a Windows-only dependency.tCanonicalizeError::detail` is human-readable.
-- Allocation: Avoid temporary `String`s; prefer `PathBuf`, `OsString`, and component streaming.
-- Syscalls: Minimize `metadata`/`canonicalize` calls; keep fast-paths and early exits intact.
-- Platform cfg: Keep Windows/Unix branches correct and side-effect free; don't introduce behavioral drift between platforms.
-- Dependencies: Do not add runtime dependencies. If you believe one is strictly necessary, open an issue first.
-- **dunce feature usage (CRITICAL)**: Any code that uses `dunce::` functions MUST be guarded with `#[cfg(all(feature = "dunce", windows))]`. The dunce crate is a Windows-only target-conditional dependency. Using `#[cfg(feature = "dunce")]` alone will cause compilation errors on non-Windows platforms when the feature is enabled.xactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux. AI Contributor Guide
-
-This repo contains a zero-dependency Rust crate that canonicalizes pathsLinux/WSL (Bash):
-- If running from Windows, prefer WSL for Linux benches. From the repo root on the Linux side, run:
-  - for i in {1..5}; do cargo bench | tee "target/bench-linux-$i.txt"; done
-- If running from Windows PowerShell and cargo is not in PATH for bash, adjust the path to your cargo installation
-- Extract the same "Rust soft_canonicalize   : <N> paths/s" line from each run, sort the five numbers, and take the median. Report as "Linux median (paths/s)".
- - For latest Python comparison, ensure `python3.13` is installed/available. The harness auto-tries `python3.13` first on Linux. when suffixes don’t exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux.
+This repo contains a zero-dependency Rust crate that canonicalizes paths when suffixes don’t exist. It must match `std::fs::canonicalize` exactly for fully-existing paths, while extending behavior to non-existing paths safely and predictably across Windows, macOS, and Linux.
 
 Use this guide when proposing changes, refactors, tests, or docs with an automated agent.
+
+## Maintaining This File
+
+AGENTS.md is read by stateless agents with no memory of prior sessions.
+Every rule must stand on its own without session context.
+
+- **General, not reactive.** Do not add rules to address a single past
+  mistake.  Only codify patterns that could recur across sessions.
+- **Context-free.** No references to specific conversations, resolved issues,
+  commit hashes, or session artifacts.  A future agent must understand the
+  rule without knowing what prompted it.
+- **Principles over examples.** Prefer abstract guidance.  If an example is
+  needed, make it generic — never name a specific module or function as the
+  motivating case.
+- **No stale specifics.** If a rule names a concrete item (file, function,
+  feature), it must be because the item is structurally important (e.g. the
+  repository layout table), not because it was the subject of a past debate.
 
 ## Golden Rules
 
 - Compatibility: Results for fully-existing paths must equal `std::fs::canonicalize`.
-- Zero deps: Keep runtime dependencies at 0 (dev-only `tempfile` is allowed in tests).
+- Minimal deps: Keep mandatory runtime dependencies at 0. Optional features may add well-justified lightweight deps (currently: `proc-canonicalize` default-enabled for Linux `/proc` magic-link handling; `dunce` Windows-only optional for UNC simplification). Dev-only `tempfile` is allowed in tests.
 - Security first: Preserve ADS validation, symlink cycle detection, null-byte checks, traversal clamping, and UNC/device semantics.
 - MSRV: Keep Minimum Supported Rust Version at `1.70.0` (edition 2021; no unstable features).
 - CI clean: `cargo fmt`, `clippy -D warnings`, tests, docs (rustdoc `-D warnings`), security audit, and MSRV all pass locally.
@@ -69,6 +58,7 @@ Do not change signatures or remove items without a clear migration plan and test
 ## Repository Layout
 
 - `src/lib.rs`: Core algorithm, Windows/Unix branches, helpers, internal tests modules.
+- `src/anchored.rs`: `anchored_canonicalize` implementation (compiled only with `--features anchored`).
 - `src/tests/`: Unit tests grouped by area (std-compat, traversal, symlink, platform, security, etc.).
 - `tests/`: Integration and blackbox security tests, including Windows ADS and UNC coverage.
 - `examples/`: Runnable examples and demos, including security demonstration.
@@ -171,12 +161,16 @@ fn test_with_symlinks() -> std::io::Result<()> {
 ```
 
 **Files with Symlink-Skipping Tests** (all must have feature guards):
-- `tests/std_compat.rs` - Tests with `got_symlink_permission()`
+- `tests/compat_symlinks.rs` - Tests with `got_symlink_permission()`
 - `tests/blackbox_toctou_attacks.rs` - TOCTOU race condition tests
 - `tests/blackbox_complex_attacks.rs` - Complex attack vectors
-- `tests/blackbox_security.rs` - Security escape attempts
-- `tests/windows_symlink_8_3_interaction.rs` - All 7 tests with permission checks
+- `tests/issue_53_symlink_dotdot_lexical_collapse.rs` - Regression test with symlink permission skip
+- `tests/windows_anchored_verbatim_drive_bug_symlink.rs` - Windows anchored symlink tests
 - `src/tests/symlink_dotdot_symlink_first.rs` - Symlink-first resolution tests
+- `src/tests/anchored_symlink_clamping.rs` - Anchored symlink clamping tests
+- `src/tests/anchored_security/windows_symlink.rs` - Windows anchored security symlink tests
+
+Use the grep commands in "How to Identify These Tests" above to find the authoritative current list — it is more reliable than this enumeration.
 
 **Before Committing**:
 1. Search for ALL tests with symlink permission checks
@@ -185,6 +179,30 @@ fn test_with_symlinks() -> std::io::Result<()> {
 4. If unsure, add feature guards - they're safe even if not strictly needed
 
 **Remember**: Tests that pass locally might fail on GitHub Actions if they lack proper feature guards!
+
+## Git Usage Policy (CRITICAL for Agents)
+
+### Read-Only Git Operations Only
+
+Agents are **only permitted to run read-only git commands**. Never run any git command that modifies the working tree, index, or history. This includes, but is not limited to:
+
+**Banned (write) operations:**
+- `git add`, `git stage`
+- `git commit`, `git commit --amend`
+- `git restore`, `git checkout -- <file>`
+- `git reset` (any form)
+- `git stash`, `git stash pop`
+- `git merge`, `git rebase`
+- `git push`, `git pull`, `git fetch`
+- `git rm`, `git mv`
+- `git tag`, `git branch -d`
+
+**Allowed (read) operations:**
+- `git status`, `git diff`, `git diff --staged`
+- `git log`, `git show`, `git blame`
+- `git ls-files`, `git stash list`
+
+If you need to stage, commit, or modify git state, **ask the user to do it** or wait for an explicit instruction. Never take git write actions on your own initiative, even to "clean up" or "fix" something you changed.
 
 ## Git Commit Workflow (CRITICAL for Agents)
 
@@ -223,7 +241,88 @@ git commit -m "fix: something"
 - Allocation: Avoid temporary `String`s; prefer `PathBuf`, `OsString`, and component streaming.
 - Syscalls: Minimize `metadata`/`canonicalize` calls; keep fast-paths and early exits intact.
 - Platform cfg: Keep Windows/Unix branches correct and side-effect free; don’t introduce behavioral drift between platforms.
-- Dependencies: Do not add runtime dependencies. If you believe one is strictly necessary, open an issue first.
+- Dependencies: Do not add new runtime dependencies. The existing `proc-canonicalize` (default feature) and `dunce` (Windows-only optional feature) are the approved optional deps. If you believe a new one is strictly necessary, open an issue first.
+- No `.unwrap()` in production code: Production code must never call `.unwrap()`, `.expect()`, or any method that panics on `None`/`Err`. Use `?`, `.ok_or()`, `.map_err()`, or `.unwrap_or()` instead. Test code may use `.unwrap()` freely.
+- No dead code: Do not use `#[allow(dead_code)]` or similar lint-suppression attributes. If the compiler says it's unused, either use it or remove it. Fix the root cause instead of silencing the warning.
+
+### Safe Indexing — No Direct Indexing in Production Code
+
+Production code must not use direct indexing (`data[i]`, `parts[1]`,
+`slice[start..end]`) on slices, `Vec`, or `str`.  Direct indexing panics on
+out-of-bounds access, which is a denial-of-service vector.
+
+**Required replacements:**
+
+| Banned                | Replacement                                               |
+| --------------------- | --------------------------------------------------------- |
+| `parts[i]`           | `parts.get(i).ok_or(…)?` or `parts.get(i).map(…)`        |
+| `data[start..end]`   | `data.get(start..end).ok_or(…)?`                          |
+| `slice[i..]`         | `slice.get(i..).unwrap_or_default()`                      |
+
+For **sequential processing**, prefer iterators (`.iter()`, `.enumerate()`,
+`.windows()`, `.chunks()`, `.split()`) over index-based loops.
+
+**Test code** (`#[cfg(test)]` blocks, `tests/`) may use direct indexing when
+the test controls the input and panic-on-bug is acceptable.
+
+### Heap Allocation in Hot Paths
+
+Hot-path functions (path component iteration, validation checks, normalization
+helpers) must not heap-allocate.  Use stack buffers, iterators, and streaming
+operations instead of intermediate `Vec`, `String`, or `Box`.
+
+For necessary allocations (variable-length output):
+- Use `Vec::with_capacity(known_size)` to avoid reallocation.
+- Prefer `Vec::extend_from_slice` over N × `push` for bulk copies.
+
+### Type Safety
+
+- Prefer `Option` / `Result` over sentinel values.  Never use empty strings,
+  `-1`, or null-equivalent magic values to signal absence.
+- Prefer `match` over `if let` when handling enums so that adding a new variant
+  produces a compile error at every call site, rather than silently falling
+  through.
+- Keep struct fields private when invariants must be enforced.  Expose
+  transition methods that enforce them.
+
+### RAG / LLM-Friendly File Size
+
+Keep source files under **~600 lines** (production or test) to fit within a
+single LLM context window and improve RAG retrieval precision.
+
+- When a production file grows past ~600 lines, split into focused submodules
+  (e.g. `foo.rs` → `foo/mod.rs` + `foo/helpers.rs`).
+- When a test file grows past ~600 lines, split into thematic files
+  (e.g. `tests_validation.rs`, `tests_security.rs`).
+- Favour a stable top-to-bottom layout so any reader knows where to look:
+  module docs → imports → constants → types → impl blocks → functions → tests.
+
+## Coding Session Discipline
+
+### Test-First / Proof-First
+
+- For every non-trivial behavior change, bug fix, or regression fix:
+  **write or update the tests first** so the expected behavior is explicit
+  before implementation changes begin.
+- The intended workflow is **red → green → refactor**:
+  1. Encode the requirement in a test.
+  2. Observe the old implementation fail or lack the behavior.
+  3. Implement the change.
+  4. Rerun the tests to prove the new behavior.
+- If a task is purely structural (rename, move, formatting) and has no
+  behavioral delta, a new failing test is not required.
+- Every problem or bug fixed must include a regression test as part of the
+  same change set.
+
+### Evidence Rule
+
+Do not claim a feature or fix is complete without evidence:
+
+- Tests (unit, integration, or doctests) proving the behavior.
+- CI output showing clean build + test pass.
+- Manual verification notes (if no automation exists yet).
+
+"Implemented" or "fixed" without proof is not acceptable.
 
 ## Tests & Quality Gates
 
@@ -395,6 +494,42 @@ Notes and tips:
 - Eager symlink adoption: Only adopt resolved symlink path if target or its parent exists; otherwise keep the link as anchor.
 - Dropping error context: Don’t return bare `io::Error` without the payload created by `error_with_path`.
 
+## Handling External Feedback & Reviews
+
+Treat feedback as input, not instruction. Validate every claim before acting.
+
+1. **Check against established principles first.** Before applying any fix —
+   whether from a reviewer, from your own analysis, or from a pragmatic
+   shortcut — ask: "Does this change violate a design principle we already
+   settled?" If yes, the change is wrong regardless of how reasonable it
+   sounds. Fix the surrounding code to uphold the principle; never weaken
+   the principle to match the surrounding code.
+
+2. **Use git history to resolve contradictions.** When two representations
+   disagree, run `git log -S "<term>" --oneline -- <file>` on both sides to
+   determine which text is newer. The newer commit represents the more
+   recent design decision. Always upgrade stale text to match the newer
+   decision, never the reverse.
+
+3. **Verify the factual claim.** Read the text being criticized. Is the
+   characterization accurate? Quote the actual text. If the reviewer
+   misread or mischaracterized the code/doc, say so and reject the finding.
+
+4. **Independently assess severity.** Do not accept a reviewer's severity
+   rating at face value. Assign your own and state it if it differs.
+
+5. **Distinguish bugs from preferences.** A factual contradiction or
+   invariant violation is a bug — fix it. "The code could be cleaner" is a
+   preference — evaluate against the cost of the change.
+
+6. **Reject or downgrade with justification.** If a finding is invalid,
+   reject it explicitly and state the reason. Do not implement changes just
+   because someone flagged something.
+
+7. **Check for cascade inconsistencies.** When fixing a confirmed finding,
+   search for the same pattern in other files. Fix all occurrences in one
+   pass — but only where the same error actually exists.
+
 ## PR Checklist (agent self-check)
 
 - Existing-path behavior unchanged and equal to `std::fs::canonicalize`.
@@ -448,7 +583,7 @@ When documenting test count, use the sum of both numbers. Update README.md and o
 Use when spinning up an automated change:
 
 """
-Work on soft-canonicalize. Constraints: zero runtime deps; preserve exact parity with std::fs::canonicalize for fully-existing paths; extend behavior to non-existing suffixes only; keep MSRV 1.70; pass clippy -D warnings and rustdoc -D warnings; run bash ci-local.sh or .\ci-local.ps1 before proposing changes. Never remove tests or weaken ADS/symlink/UNC/.. protections. Add focused tests for any behavior you touch.
+Work on soft-canonicalize. Constraints: no new runtime deps (approved deps: `proc-canonicalize` default feature, `dunce` Windows-only optional); preserve exact parity with std::fs::canonicalize for fully-existing paths; extend behavior to non-existing suffixes only; keep MSRV 1.70; pass clippy -D warnings and rustdoc -D warnings; run bash ci-local.sh or .\ci-local.ps1 before proposing changes. Never remove tests or weaken ADS/symlink/UNC/.. protections. Add focused tests for any behavior you touch.
 """
 
 ## Releasing (maintainers)

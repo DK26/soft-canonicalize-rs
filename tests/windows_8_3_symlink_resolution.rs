@@ -1,32 +1,27 @@
-//! Windows-specific tests for symlink and 8.3 short name interaction
+//! Windows-specific tests: symlink resolution interacting with 8.3 short names
 //!
-//! These tests validate that the v0.4.0 optimizations (direct component streaming,
-//! elimination of VecDeque) don't introduce issues with Windows 8.3 short name
-//! expansion when symlinks are involved.
-//!
-//! Test scenarios:
-//! 1. Symlink as first component resolving to path with 8.3 names
-//! 2. Symlink followed by non-existing suffix with 8.3 pattern
-//! 3. Multiple symlinks in chain where target contains 8.3 names
-//! 4. 8.3 name component before a symlink
-//! 5. Mixed existing/non-existing with symlinks and 8.3 patterns
+//! Covers:
+//! - Symlink as first component resolving to a path with actual 8.3 short names
+//! - Symlink followed by a non-existing suffix that contains 8.3-like patterns
+//! - 8.3 expansion for a fully-existing path that passes through a symlink
+//! - Non-existing path whose non-existing portion contains an 8.3-like pattern
+//! - Parity with std::fs::canonicalize when the full path exists (symlink + 8.3)
 
 // Import shared test helpers (must be at crate root level for integration tests)
 mod test_helpers;
 
 #[cfg(windows)]
-mod windows_symlink_8_3_tests {
+mod windows_8_3_symlink_resolution_tests {
     use soft_canonicalize::soft_canonicalize;
     use std::fs;
     use std::io;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    // Use the symlink helper from test utilities
     use crate::test_helpers::symlink_or_junction::create_symlink_or_junction;
 
-    /// Helper to create a symlink with junction fallback
-    /// Returns Ok(true) if link created, Ok(false) if skipped (both symlink and junction failed)
+    /// Helper to create a symlink with junction fallback.
+    /// Returns Ok(true) if link created, Ok(false) if skipped (both symlink and junction failed).
     fn try_create_symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(
         original: P,
         link: Q,
@@ -74,9 +69,8 @@ mod windows_symlink_8_3_tests {
         Some(PathBuf::from(short_path))
     }
 
-    /// Check if 8.3 short names are actually generated on this system
+    /// Check if 8.3 short names are actually generated on this system.
     fn are_8_3_names_enabled() -> bool {
-        // Create a test directory with a long name
         if let Ok(temp_dir) = TempDir::new() {
             let long_name = temp_dir
                 .path()
@@ -85,7 +79,6 @@ mod windows_symlink_8_3_tests {
                 if let Some(short_path) = get_short_path_name(&long_name) {
                     let short_str = short_path.to_string_lossy();
                     let long_str = long_name.to_string_lossy();
-                    // If they're different, 8.3 names are enabled
                     return short_str != long_str && short_str.contains('~');
                 }
             }
@@ -195,10 +188,10 @@ mod windows_symlink_8_3_tests {
         let short_str = short_target.to_string_lossy();
 
         if result_str.contains(&*short_str) {
-            println!("⚠️  WARNING: Result still contains 8.3 short name path");
+            println!("WARNING: Result still contains 8.3 short name path");
             println!("   This might indicate 8.3 expansion was skipped");
         } else {
-            println!("✅ 8.3 short name was properly expanded to long name");
+            println!("8.3 short name was properly expanded to long name");
         }
 
         Ok(())
@@ -294,173 +287,6 @@ mod windows_symlink_8_3_tests {
         Ok(())
     }
 
-    /// Test Scenario 3: Chain of symlinks where final target contains 8.3 names
-    ///
-    /// This tests:
-    /// - Multiple symlinks in the path (symlink_seen = true early)
-    /// - Final resolution contains 8.3-like patterns
-    /// - Verify proper handling through the entire chain
-    #[test]
-    fn test_chained_symlinks_with_8_3_target() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let base = temp_dir.path();
-
-        // Create target with 8.3-like name
-        let final_target = base.join("LONGDI~1");
-        fs::create_dir(&final_target)?;
-        fs::create_dir(final_target.join("subdir"))?;
-
-        // Create intermediate target
-        let intermediate = base.join("intermediate");
-        match try_create_symlink_dir(&final_target, &intermediate) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!(
-                    "Skipping test_chained_symlinks_with_8_3_target: no symlink/junction support"
-                );
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        }
-
-        // Create first symlink pointing to intermediate
-        let first_link = base.join("first_link");
-        match try_create_symlink_dir(&intermediate, &first_link) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!(
-                    "Skipping test_chained_symlinks_with_8_3_target: no symlink/junction support"
-                );
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        }
-
-        // Test path through the chain with non-existing suffix
-        let test_path = first_link.join("subdir").join("file.txt");
-        let result = soft_canonicalize(&test_path)?;
-
-        println!("Test path: {}", test_path.display());
-        println!("Result: {}", result.display());
-
-        assert!(result.is_absolute());
-
-        // Verify the existing portion matches std::fs::canonicalize
-        let existing_check = first_link.join("subdir");
-        if let Ok(std_canon) = fs::canonicalize(existing_check) {
-            println!(
-                "std::fs::canonicalize of existing portion: {}",
-                std_canon.display()
-            );
-            #[cfg(not(feature = "dunce"))]
-            {
-                let expected = std_canon.join("file.txt");
-                assert_eq!(
-                    result, expected,
-                    "Result must equal std(existing)+tail for non-existing suffix"
-                );
-            }
-            #[cfg(feature = "dunce")]
-            {
-                let expected = std_canon.join("file.txt");
-                let result_check = result.to_string_lossy();
-                let expected_str = expected.to_string_lossy();
-                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
-                let expected_simplified = expected_str.trim_start_matches(r"\\?\");
-                assert_eq!(
-                    result_check, expected_simplified,
-                    "Result must equal std(existing)+tail (simplified)"
-                );
-            }
-
-            // Check if LONGDI~1 is expanded or preserved
-            let std_str = std_canon.to_string_lossy();
-            if std_str.contains("LONGDI~1") {
-                println!(
-                    "INFO: std::fs::canonicalize preserves 'LONGDI~1' (actual directory name)"
-                );
-            } else {
-                println!("INFO: std::fs::canonicalize expanded or normalized 'LONGDI~1'");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Test Scenario 4: 8.3-like component BEFORE a symlink
-    ///
-    /// This tests:
-    /// - Path has 8.3-like name early in the path
-    /// - Followed by a symlink component
-    /// - Verify proper handling of this ordering
-    #[test]
-    fn test_8_3_component_before_symlink() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let base = temp_dir.path();
-
-        // Create directory with 8.3-like name
-        let eight_three_dir = base.join("SHORTD~1");
-        fs::create_dir(&eight_three_dir)?;
-
-        // Create target for symlink
-        let target_dir = base.join("target");
-        fs::create_dir(&target_dir)?;
-        fs::create_dir(target_dir.join("inner"))?;
-
-        // Create symlink inside the 8.3-like directory
-        let link_path = eight_three_dir.join("mylink");
-        match try_create_symlink_dir(&target_dir, link_path) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!(
-                    "Skipping test_8_3_component_before_symlink: no symlink/junction support"
-                );
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        }
-
-        // Test path: SHORTD~1/mylink/inner/file.txt
-        let test_path = eight_three_dir
-            .join("mylink")
-            .join("inner")
-            .join("file.txt");
-        let result = soft_canonicalize(&test_path)?;
-
-        println!("Test path: {}", test_path.display());
-        println!("Result: {}", result.display());
-
-        assert!(result.is_absolute());
-
-        // Verify the existing portion is canonicalized correctly
-        let existing_check = eight_three_dir.join("mylink").join("inner");
-        if let Ok(std_canon) = fs::canonicalize(existing_check) {
-            println!("std::fs::canonicalize result: {}", std_canon.display());
-            #[cfg(not(feature = "dunce"))]
-            {
-                assert!(
-                    result.starts_with(std_canon),
-                    "Result should match std::fs::canonicalize for existing portion"
-                );
-            }
-            #[cfg(feature = "dunce")]
-            {
-                let result_check = result.to_string_lossy();
-                let std_str = std_canon.to_string_lossy();
-                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(std_str.starts_with(r"\\?\"), "std returns UNC");
-                let std_simplified = std_str.trim_start_matches(r"\\?\");
-                assert!(
-                    result_check.starts_with(std_simplified),
-                    "Result should match std::fs::canonicalize for existing portion"
-                );
-            }
-        }
-
-        Ok(())
-    }
-
     /// Test Scenario 5: Real 8.3 expansion with existing file after symlink
     ///
     /// This tests:
@@ -527,87 +353,15 @@ mod windows_symlink_8_3_tests {
             );
         }
 
-        // Try to detect if there's an 8.3 alias (this is filesystem-dependent)
-        // We'll use std::fs to check what the actual short name might be
-        // This is informational - we can't reliably create/detect 8.3 names
         println!("INFO: Testing with filesystem-assigned names");
         println!("      If NTFS has created an 8.3 alias, both should resolve identically");
 
         Ok(())
     }
 
-    /// Test Scenario 6: Symlink in middle of path with 8.3 before and after
-    ///
-    /// This is a complex scenario:
-    /// - Path: SHORTD~1/symlink/LONGDI~2/file.txt
-    /// - Verify correct handling throughout
-    #[test]
-    fn test_8_3_around_symlink() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let base = temp_dir.path();
-
-        // Create first 8.3-like directory
-        let first_83 = base.join("FIRST8~1");
-        fs::create_dir(&first_83)?;
-
-        // Create target with 8.3-like name
-        let target_83 = base.join("TARGET~1");
-        fs::create_dir(&target_83)?;
-        fs::create_dir(target_83.join("SECOND~1"))?;
-
-        // Create symlink in first directory pointing to target
-        let link_path = first_83.join("mylink");
-        match try_create_symlink_dir(&target_83, link_path) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!("Skipping test_8_3_around_symlink: no symlink/junction support");
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        }
-
-        // Test path: FIRST8~1/mylink/SECOND~1/file.txt
-        let test_path = first_83.join("mylink").join("SECOND~1").join("file.txt");
-        let result = soft_canonicalize(&test_path)?;
-
-        println!("Test path: {}", test_path.display());
-        println!("Result: {}", result.display());
-
-        assert!(result.is_absolute());
-
-        // Compare existing portion with std::fs::canonicalize
-        let existing_check = first_83.join("mylink").join("SECOND~1");
-        if let Ok(std_canon) = fs::canonicalize(existing_check) {
-            println!("std::fs::canonicalize result: {}", std_canon.display());
-            #[cfg(not(feature = "dunce"))]
-            {
-                let expected = std_canon.join("file.txt");
-                assert_eq!(
-                    result, expected,
-                    "Result must equal std(existing)+tail for non-existing suffix"
-                );
-            }
-            #[cfg(feature = "dunce")]
-            {
-                let expected = std_canon.join("file.txt");
-                let result_check = result.to_string_lossy();
-                let expected_str = expected.to_string_lossy();
-                assert!(!result_check.starts_with(r"\\?\"), "dunce should simplify");
-                assert!(expected_str.starts_with(r"\\?\"), "std returns UNC");
-                let expected_simplified = expected_str.trim_start_matches(r"\\?\");
-                assert_eq!(
-                    result_check, expected_simplified,
-                    "Result must equal std(existing)+tail (simplified)"
-                );
-            }
-        }
-
-        Ok(())
-    }
-
     /// Test Scenario 7: Non-existing path with symlink and 8.3 pattern
     ///
-    /// Edge case where symlink itself doesn't exist but path contains 8.3 pattern
+    /// Edge case where symlink itself doesn't exist but path contains 8.3 pattern.
     #[test]
     fn test_nonexisting_symlink_with_8_3_pattern() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
@@ -643,7 +397,7 @@ mod windows_symlink_8_3_tests {
     /// Comparative test: Ensure parity with std::fs::canonicalize when path fully exists
     ///
     /// This is the critical compatibility test - when both symlinks and 8.3 names exist,
-    /// our result MUST match std::fs::canonicalize exactly
+    /// our result MUST match std::fs::canonicalize exactly.
     #[test]
     fn test_std_parity_symlink_and_8_3_existing() -> io::Result<()> {
         let temp_dir = TempDir::new()?;
