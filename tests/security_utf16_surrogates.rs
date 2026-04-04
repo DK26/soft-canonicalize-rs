@@ -3,13 +3,11 @@
 //! Verifies that soft_canonicalize never panics, causes UB, or loops when
 //! fed WTF-16 encoded paths that contain unpaired high or low surrogates.
 
-use soft_canonicalize::soft_canonicalize;
-
 // ─── 1. Unpaired UTF-16 Surrogates (Windows) ────────────────────────────────
 
 #[cfg(windows)]
 mod unpaired_surrogates {
-    use super::*;
+    use soft_canonicalize::soft_canonicalize;
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use std::path::PathBuf;

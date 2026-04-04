@@ -3,15 +3,13 @@
 //! Verifies that soft_canonicalize handles NTFS junction points correctly,
 //! resolving them like absolute symlinks and clamping ".." traversal.
 
-use soft_canonicalize::soft_canonicalize;
-use std::io;
-
 // ─── 5. Junction vs Symlink Discrimination (Windows) ─────────────────────────
 
 #[cfg(windows)]
 mod junction_discrimination {
-    use super::*;
+    use soft_canonicalize::soft_canonicalize;
     use std::fs;
+    use std::io;
     use std::process::Command;
     use tempfile::TempDir;
 

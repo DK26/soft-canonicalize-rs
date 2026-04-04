@@ -3,6 +3,7 @@
 //! Tests Windows path formats: drive letters, UNC paths, extended-length prefixes,
 //! device namespace, short filenames, and symlink ancestors.
 
+#[cfg(windows)]
 use crate::soft_canonicalize;
 
 #[cfg(windows)]

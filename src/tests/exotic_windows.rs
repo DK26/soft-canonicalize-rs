@@ -6,9 +6,10 @@
 //!
 //! See: docs/dunce_msdn_analysis.md for detailed analysis
 
+#[cfg(windows)]
 use crate::soft_canonicalize;
 
-#[cfg(feature = "anchored")]
+#[cfg(all(windows, feature = "anchored"))]
 use crate::anchored_canonicalize;
 
 /// Test superscript digit reserved names (ISO-8859-1 characters)
