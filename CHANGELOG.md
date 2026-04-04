@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-04-04
+
+### Fixed
+
+- **Fixed `..` traversal bypass when normalized path differs from original** ([#53](https://github.com/DK26/soft-canonicalize-rs/issues/53)): The normalized-path fast-path (`fs::canonicalize` on the normalized form) was incorrectly succeeding for paths containing `..` components that pointed to existing locations after normalization. This caused `soft_canonicalize` to return a fully-canonicalized result that silently resolved `..` through symlinks instead of applying lexical `..` resolution per the crate's symlink-first semantics. The fast-path is now skipped when `..` is present in the normalized path.
+
+### Changed
+
+- **Refactored source layout**: Extracted `anchored_canonicalize` into dedicated `src/anchored.rs` module (compiled only with `--features anchored`). Split large test files by platform and concern for better maintainability and RAG retrieval.
+- **Improved documentation**: Updated README.md and lib.rs with feature comparison tables, exotic filesystem support details, and refreshed test counts.
+- **CI**: Removed redundant `cargo audit` JSON-format step from audit workflow.
+
+### Added
+
+- **Regression test for issue #53** (`tests/issue_53_symlink_dotdot_lexical_collapse.rs`): Verifies that `..` traversal respects symlink-first lexical semantics and does not silently resolve through symlinks.
+- **Comprehensive security test coverage**: New test files for cross-platform ADS security, anchored edge cases, component length limits, invalid UTF-8 handling, junction discrimination, permission TOCTOU, rename TOCTOU, special files, UTF-16 surrogates, and Windows 8.3 components.
+- **Exotic filesystem fallback tests** (`tests/exotic_filesystem_fallback.rs`): Coverage for graceful behavior on exotic filesystem failures.
+- **Cross-platform path tests**: macOS NFD normalization, private symlinks, resource forks/firmlinks, and volumes anchored edge cases.
+- **Expanded feature combination tests**: Split into core and platform-specific test files.
+- **Compatibility test suites**: Dedicated test files for `..` traversal, existing paths, and symlink compatibility with `std::fs::canonicalize`.
+
 ## [0.5.4] - 2025-01-19
 
 ### Changed
