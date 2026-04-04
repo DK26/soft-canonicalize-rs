@@ -62,14 +62,20 @@ fn got_symlink_permission(tmpdir: &TempDir) -> bool {
 /// bypassing symlink resolution.
 ///
 /// Layout:
-///   {tmp}/a          — existing file (the WRONG answer)
+///   {tmp}/a          — existing file (the WRONG answer on Unix; expected on Windows)
 ///   {tmp}/nested/dir — existing directory (symlink target)
-///   {tmp}/nested/a   — does NOT exist (the CORRECT answer)
+///   {tmp}/nested/a   — does NOT exist (the CORRECT answer on Unix)
 ///   {tmp}/link       — symlink → {tmp}/nested/dir
 ///
 /// Input:  `{tmp}/link/../a`
-/// Correct output: `{tmp}/nested/a`  (follow symlink, then resolve `..`)
-/// Bug output:     `{tmp}/a`         (lexical collapse of `link/..`)
+///
+/// Platform semantics for `symlink/..`:
+///   Unix:    follows symlink first, then `..` from target → nested/a (non-existing)
+///   Windows: resolves `..` lexically through symlinks → {tmp}/a (existing decoy)
+///
+/// On Unix, the correct output is `{tmp}/nested/a` (follow symlink, then resolve `..`).
+/// On Windows, `link\..` collapses lexically, so the path resolves to `{tmp}\a`
+/// which exists — and we must match `std::fs::canonicalize` for existing paths.
 #[test]
 fn issue_53_symlink_dotdot_non_existing_suffix() -> std::io::Result<()> {
     let tmpdir = tmpdir();
@@ -99,14 +105,16 @@ fn issue_53_symlink_dotdot_non_existing_suffix() -> std::io::Result<()> {
 
     let result = soft_canonicalize(&test_path)?;
 
-    // Expected: follow symlink link→nested/dir, then .. → nested/, then append a
-    // = {canonicalized tmp}/nested/a
-    let expected_base = fs::canonicalize(base.join("nested"))?;
-    let expected = expected_base.join("a");
+    // Platform divergence for `symlink/../a`:
+    //   Unix:    follows symlink first, then resolves `..` from target → nested/a
+    //   Windows: resolves `..` lexically through symlinks → {tmp}/a
+    // On Windows, `{tmp}/a` (the decoy) exists, so std::fs::canonicalize succeeds
+    // and returns it. We must match that behavior (golden rule: match std for existing paths).
 
-    // Feature-conditional assertion for Windows dunce support
-    #[cfg(not(feature = "dunce"))]
+    #[cfg(unix)]
     {
+        let expected_base = fs::canonicalize(base.join("nested"))?;
+        let expected = expected_base.join("a");
         assert_eq!(
             result,
             expected,
@@ -119,23 +127,42 @@ fn issue_53_symlink_dotdot_non_existing_suffix() -> std::io::Result<()> {
             expected.display(),
         );
     }
-    #[cfg(feature = "dunce")]
+
+    #[cfg(windows)]
     {
-        let result_str = result.to_string_lossy();
-        let expected_str = expected.to_string_lossy();
-        // On Windows with dunce, strip \\?\ prefix for comparison
-        let expected_simplified = expected_str.trim_start_matches(r"\\?\");
-        assert_eq!(
-            result_str.as_ref(),
-            expected_simplified,
-            "issue #53 (dunce): soft_canonicalize should follow the symlink before resolving `..`\n\
-             input:    {}\n\
-             got:      {}\n\
-             expected: {}",
-            test_path.display(),
-            result.display(),
-            expected_simplified,
-        );
+        // Windows resolves `link\..` lexically, so the path becomes `{tmp}\a` which exists.
+        // soft_canonicalize must match std::fs::canonicalize for existing paths.
+        let std_result = fs::canonicalize(&test_path)?;
+        #[cfg(not(feature = "dunce"))]
+        {
+            assert_eq!(
+                result,
+                std_result,
+                "issue #53 (windows): soft_canonicalize must match std::fs::canonicalize\n\
+                 input: {}\n\
+                 got:   {}\n\
+                 std:   {}",
+                test_path.display(),
+                result.display(),
+                std_result.display(),
+            );
+        }
+        #[cfg(feature = "dunce")]
+        {
+            let result_str = result.to_string_lossy();
+            let std_str = std_result.to_string_lossy();
+            assert_eq!(
+                result_str.as_ref(),
+                std_str.trim_start_matches(r"\\?\"),
+                "issue #53 (windows, dunce): soft_canonicalize must match std (simplified)\n\
+                 input: {}\n\
+                 got:   {}\n\
+                 std:   {}",
+                test_path.display(),
+                result.display(),
+                std_str,
+            );
+        }
     }
 
     Ok(())
