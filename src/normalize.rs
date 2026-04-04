@@ -18,7 +18,7 @@ pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
             None,
             Drive(OsString),         // e.g., "C:"
             Unc(OsString, OsString), // (server, share)
-            DeviceNS(OsString),      // raw device prefix (e.g., \\., \\?\GLOBALROOT\...)
+            DeviceNS,                // raw device prefix (e.g., \\., \\?\GLOBALROOT\...)
         }
 
         let mut anchor = Anchor::None;
@@ -36,14 +36,17 @@ pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
                             anchor = Anchor::Unc(server.to_os_string(), share.to_os_string());
                         }
                         Prefix::Disk(d) | Prefix::VerbatimDisk(d) => {
-                            // Store like "C:"
+                            // Store like "C:" — build without an intermediate String allocation.
+                            // `d` is a Windows drive letter (A-Z), so always valid ASCII/UTF-8.
+                            let bytes = [d, b':'];
+                            let drive_str = std::str::from_utf8(&bytes).unwrap_or_default();
                             let mut s = OsString::with_capacity(2);
-                            s.push(format!("{}:", (d as char)));
+                            s.push(drive_str);
                             anchor = Anchor::Drive(s);
                             // For drive-absolute, RootDir will activate floor
                         }
-                        Prefix::DeviceNS(ns) | Prefix::Verbatim(ns) => {
-                            anchor = Anchor::DeviceNS(ns.to_os_string());
+                        Prefix::DeviceNS(_) | Prefix::Verbatim(_) => {
+                            anchor = Anchor::DeviceNS;
                         }
                     }
                 }
@@ -122,8 +125,7 @@ pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
                     out.push(Component::RootDir.as_os_str());
                 }
             }
-            Anchor::DeviceNS(ns) => {
-                let _ = ns; // read to avoid dead_code warning
+            Anchor::DeviceNS => {
                 if let Some(p) = &prefix_os {
                     out.push(p);
                 }

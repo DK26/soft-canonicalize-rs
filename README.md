@@ -20,6 +20,7 @@ Rust implementation inspired by Python 3.6+ `pathlib.Path.resolve(strict=False)`
 **🔒 Robust** - 500+ comprehensive tests including symlink cycle protection, malicious stream validation, and edge case handling  
 **🛡️ Safe traversal** - Proper `..` and symlink resolution with cycle detection  
 **🌍 Cross-platform** - Windows, macOS, Linux with comprehensive UNC/symlink handling  
+**💾 Exotic filesystem support** - Works on RAM disks, network drives, Docker volumes ([rust-lang/rust#45067](https://github.com/rust-lang/rust/issues/45067), [#48249](https://github.com/rust-lang/rust/issues/48249))  
 **🔧 Zero dependencies** - Optional features may add minimal dependencies
 
 ## Lexical vs. Filesystem-Based Resolution
@@ -216,15 +217,16 @@ proc-canonicalize = "0.0"
 
 ### Feature Comparison
 
-| Feature                          | `soft_canonicalize`           | `proc_canonicalize` | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` |
-| -------------------------------- | ----------------------------- | ------------------- | ----------------------- | --------------------- | --------------------- |
-| Resolution type                  | Filesystem-based              | Filesystem-based    | Filesystem-based        | Lexical               | Filesystem-based      |
-| Works with non-existing paths    | ✅                             | ❌                   | ❌                       | ✅                     | ❌                     |
-| Resolves symlinks                | ✅                             | ✅                   | ✅                       | ❌                     | ✅                     |
-| Preserves Linux namespaces       | ✅ (default)                   | ✅                   | ❌                       | N/A                   | ❌                     |
-| Simplified Windows paths         | ✅ (opt-in `dunce` feature)    | ✅ (opt-in)          | ❌ (UNC)                 | ❌ (varies)            | ✅                     |
-| Virtual/bounded canonicalization | ✅ (opt-in `anchored` feature) | ❌                   | ❌                       | ❌                     | ❌                     |
-| Zero dependencies                | ✅ (default)                   | ✅                   | ✅                       | ✅                     | ✅                     |
+| Feature                          | `soft_canonicalize`           | `normpath` | `proc_canonicalize` | `std::fs::canonicalize` | `std::path::absolute` | `dunce::canonicalize` |
+| -------------------------------- | ----------------------------- | ---------- | ------------------- | ----------------------- | --------------------- | --------------------- |
+| Resolution type                  | Filesystem-based              | Lexical    | Filesystem-based    | Filesystem-based        | Lexical               | Filesystem-based      |
+| Works with non-existing paths    | ✅                             | ✅          | ❌                   | ❌                       | ✅                     | ❌                     |
+| Resolves symlinks                | ✅                             | ❌          | ✅                   | ✅                       | ❌                     | ✅                     |
+| RAM disk / network drive support | ✅ (graceful fallback)         | ✅ (no I/O) | ❌                   | ❌                       | ✅                     | ❌                     |
+| Preserves Linux namespaces       | ✅ (default)                   | N/A        | ✅                   | ❌                       | N/A                   | ❌                     |
+| Simplified Windows paths         | ✅ (opt-in `dunce` feature)    | ✅ (opt-in) | ✅ (opt-in)          | ❌ (UNC)                 | ❌ (varies)            | ✅                     |
+| Virtual/bounded canonicalization | ✅ (opt-in `anchored` feature) | ❌          | ❌                   | ❌                       | ❌                     | ❌                     |
+| Zero dependencies                | ✅ (default)                   | ✅          | ✅                   | ✅                       | ✅                     | ✅                     |
 
 ### When to Use Each
 
@@ -235,11 +237,11 @@ proc-canonicalize = "0.0"
 - ✅ You need simplified Windows paths for legacy apps (with `dunce` feature)
 
 **Choose alternatives when:**
+- **`normpath::normalize`** - Maximum performance needed, you can guarantee no symlinks exist, and you want pure lexical normalization (no I/O). Note: lacks symlink resolution, so not suitable when security against symlink-based attacks is required
 - **`proc_canonicalize::canonicalize`** - All paths exist and you need correct Linux namespace handling (recommended over `std::fs::canonicalize`)
 - **`std::fs::canonicalize`** - All paths exist; only when you specifically need the legacy behavior that resolves `/proc/PID/root` to `/`
 - **`std::path::absolute`** - You only need absolute paths without symlink resolution (lexical, fast)
 - **`dunce::canonicalize`** - Windows-only, all paths exist, just need UNC simplification
-- **`normpath::normalize`** - Lexical normalization only, no filesystem I/O (fast but doesn't resolve symlinks)
 - **`path_absolutize`** - Absolute path resolution without symlink following, with CWD caching optimizations
 
 ## Related Projects
