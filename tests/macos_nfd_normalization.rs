@@ -8,7 +8,6 @@
 use soft_canonicalize::soft_canonicalize;
 use std::fs;
 use std::io;
-use std::path::Path;
 use tempfile::TempDir;
 
 // ─── 1. Unicode NFD Normalization (APFS/HFS+) ──────────────────────────────
