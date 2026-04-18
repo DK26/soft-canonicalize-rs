@@ -152,11 +152,26 @@ pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
                 return ext;
             }
             Anchor::Drive(ref drive) => {
-                let mut ext = PathBuf::from(r"\\?\");
-                ext.push(drive);
                 if has_root_dir {
-                    ext.push(Component::RootDir.as_os_str());
+                    // Build `\\?\C:\...` in a single `PathBuf::from` so it parses
+                    // as `Prefix::VerbatimDisk`. The naive form —
+                    // `PathBuf::from(r"\\?\")` then `push(drive)` — silently
+                    // drops the verbatim marker and the result parses as
+                    // `Prefix::Disk`. That mismatch made the clamp output fail
+                    // `starts_with` against a true-verbatim anchor floor.
+                    let drive_str = drive.to_string_lossy();
+                    let mut ext = PathBuf::from(format!(r"\\?\{drive_str}\"));
+                    for seg in stack {
+                        ext.push(seg);
+                    }
+                    return ext;
                 }
+                // Drive-relative (`C:foo`): preserve drive-relative semantics so
+                // downstream `fs::canonicalize` can resolve against the
+                // per-drive CWD. Adding a verbatim prefix here would turn it
+                // into an absolute path rooted at `C:\`.
+                let mut ext = PathBuf::new();
+                ext.push(drive);
                 for seg in stack {
                     ext.push(seg);
                 }
@@ -194,5 +209,67 @@ pub(crate) fn simple_normalize_path(path: &std::path::Path) -> PathBuf {
         }
 
         result
+    }
+}
+
+#[cfg(all(test, windows))]
+mod verbatim_prefix_regression {
+    use super::simple_normalize_path;
+    use std::path::{Component, Path, Prefix};
+
+    fn prefix_kind(p: &Path) -> Option<Prefix<'_>> {
+        p.components().next().and_then(|c| match c {
+            Component::Prefix(pc) => Some(pc.kind()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn verbatim_disk_input_yields_verbatim_disk_output() {
+        let input = Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\.tmpAAAA\home\jail");
+        let out = simple_normalize_path(input);
+        match prefix_kind(&out) {
+            Some(Prefix::VerbatimDisk(b'C')) => {}
+            other => panic!(
+                "simple_normalize_path must preserve VerbatimDisk; got {:?} for output {:?}",
+                other, out
+            ),
+        }
+    }
+
+    #[test]
+    fn verbatim_disk_with_dotdot_still_yields_verbatim_disk() {
+        // Simulates the anchored-symlink flow: a verbatim path with `..` segments
+        // that collapse but still leave a non-trivial tail. The output prefix
+        // must remain `VerbatimDisk` so callers using `Path::starts_with` against
+        // a verbatim anchor floor get the match they expect.
+        let input = Path::new(r"\\?\C:\a\b\c\..\..\d\e");
+        let out = simple_normalize_path(input);
+        match prefix_kind(&out) {
+            Some(Prefix::VerbatimDisk(b'C')) => {}
+            other => panic!(
+                "simple_normalize_path must preserve VerbatimDisk under `..`; got {:?} for output {:?}",
+                other, out
+            ),
+        }
+    }
+
+    #[test]
+    fn disk_starts_with_verbatim_disk_is_false_in_stdlib() {
+        // Pin the stdlib behavior this fix depends on: `Path::starts_with` is
+        // component-based and treats `Prefix::Disk('C')` and `Prefix::VerbatimDisk('C')`
+        // as non-equal. If this ever changes in stdlib, the regression above
+        // becomes moot — but we want to know.
+        let disk = Path::new(r"C:\foo\bar");
+        let verbatim = Path::new(r"\\?\C:\foo\bar");
+        assert!(matches!(prefix_kind(disk), Some(Prefix::Disk(_))));
+        assert!(matches!(
+            prefix_kind(verbatim),
+            Some(Prefix::VerbatimDisk(_))
+        ));
+        assert!(
+            !disk.starts_with(verbatim),
+            "stdlib changed: Disk now matches VerbatimDisk in starts_with — revisit clamp logic"
+        );
     }
 }
