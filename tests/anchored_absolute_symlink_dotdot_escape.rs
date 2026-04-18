@@ -63,7 +63,23 @@ fn absolute_symlink_target_with_leading_dotdot_must_not_escape_anchor() {
     let clamped = anchored_canonicalize(&anchor, "link")
         .expect("anchored_canonicalize should succeed on a valid symlink");
 
-    // --- Contract 1: output must not contain ".." components ---
+    // --- Contract 1 (primary): exact clamped path ---
+    // The raw target "/../outside_secret" has its leading slash stripped to
+    // "../outside_secret", then the ".." is popped with an empty stack (clamp
+    // to anchor floor), leaving just "outside_secret" to be joined onto the
+    // canonicalized anchor. Asserting the full expected PathBuf pins the
+    // clamp contract directly, without relying on the OS resolving the result.
+    let expected = soft_canonicalize(&anchor).unwrap().join("outside_secret");
+    assert_eq!(
+        clamped, expected,
+        "anchored_canonicalize must clamp absolute '..'-bearing symlink target \
+         to anchor floor; got {clamped:?}, expected {expected:?}"
+    );
+
+    // --- Contract 2 (invariant): output must not contain ".." components ---
+    // Subsumed by Contract 1 for this exact input, but keeps a fast local
+    // invariant check that any future change to the expected-path shape
+    // cannot silently re-introduce literal ".." into the output.
     let leaked_dotdot = clamped
         .components()
         .any(|c| matches!(c, Component::ParentDir));
@@ -72,27 +88,6 @@ fn absolute_symlink_target_with_leading_dotdot_must_not_escape_anchor() {
         "anchored_canonicalize leaked '..' into output; anchor escape is possible \
          when the caller consumes this path: {clamped:?}"
     );
-
-    // --- Contract 2: the resolved path must stay within the canonical anchor ---
-    // Use fs::canonicalize to see what the OS *actually* resolves the returned
-    // path to. If that escapes the canonical anchor, the clamping contract is
-    // broken regardless of whether the textual path starts_with() the anchor.
-    let canonical_anchor = soft_canonicalize(&anchor).unwrap();
-    if let Ok(os_resolved) = fs::canonicalize(&clamped) {
-        assert!(
-            os_resolved.starts_with(&canonical_anchor),
-            "anchored_canonicalize returned a path that OS-resolves outside the anchor: \
-             returned={clamped:?}, os_resolved={os_resolved:?}, anchor={canonical_anchor:?}"
-        );
-    }
-
-    // --- Contract 3: reading the returned path must NOT return the outside secret ---
-    if let Ok(bytes) = fs::read(&clamped) {
-        assert_ne!(
-            bytes, b"CONFIDENTIAL",
-            "anchor ESCAPE: clamped result reads the outside-anchor secret: {clamped:?}"
-        );
-    }
 }
 
 #[test]
@@ -123,6 +118,21 @@ fn absolute_symlink_target_with_interior_dotdot_must_not_escape_anchor() {
     let clamped =
         anchored_canonicalize(&anchor, "link").expect("anchored_canonicalize should succeed");
 
+    // --- Contract 1 (primary): exact clamped path ---
+    // Strip root → "foo/../../outside_secret2". Normalize with clamp:
+    //   push "foo"            stack: [foo]
+    //   ".."  pop             stack: []
+    //   ".."  clamp (empty)   stack: []
+    //   push "outside_secret2" stack: [outside_secret2]
+    // Final: <canonical_anchor>/outside_secret2.
+    let expected = soft_canonicalize(&anchor).unwrap().join("outside_secret2");
+    assert_eq!(
+        clamped, expected,
+        "anchored_canonicalize must clamp interior-'..'-bearing symlink target \
+         to anchor floor; got {clamped:?}, expected {expected:?}"
+    );
+
+    // --- Contract 2 (invariant): output must not contain ".." components ---
     let leaked_dotdot = clamped
         .components()
         .any(|c| matches!(c, Component::ParentDir));
@@ -130,13 +140,4 @@ fn absolute_symlink_target_with_interior_dotdot_must_not_escape_anchor() {
         !leaked_dotdot,
         "anchored_canonicalize leaked '..' into output (interior ..): {clamped:?}"
     );
-
-    let canonical_anchor = soft_canonicalize(&anchor).unwrap();
-    if let Ok(os_resolved) = fs::canonicalize(&clamped) {
-        assert!(
-            os_resolved.starts_with(&canonical_anchor),
-            "interior-dotdot anchor escape: returned={clamped:?}, \
-             os_resolved={os_resolved:?}, anchor={canonical_anchor:?}"
-        );
-    }
 }
