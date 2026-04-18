@@ -206,6 +206,22 @@ Write-Host ""
 # Run all CI checks in order
 Run-Check "Format Check" "cargo fmt --all -- --check"
 Run-Check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
+
+# Cross-platform Clippy: host clippy skips files gated for the OTHER platform
+# (e.g., tests starting with `#![cfg(unix)]` compile to nothing on Windows, so
+# clippy never lints them). Run clippy against the complement target so issues
+# like `needless_borrow` in cross-platform test files are caught before CI.
+if ($env:OS -eq "Windows_NT") {
+    $crossTarget = "x86_64-unknown-linux-gnu"
+} else {
+    $crossTarget = "x86_64-pc-windows-gnu"
+}
+Write-Host "Ensuring cross-platform target '$crossTarget' is installed..." -ForegroundColor Cyan
+$oldEA = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+& rustup target add $crossTarget 2>&1 | Out-Null
+$ErrorActionPreference = $oldEA
+Run-Check "Cross-platform Clippy ($crossTarget)" "cargo clippy --target $crossTarget --all-targets --all-features -- -D warnings"
+
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
 # Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
 $env:SKIP_PERMISSION_TESTS = "1"
@@ -285,6 +301,10 @@ if (Get-Command rustup -ErrorAction SilentlyContinue) {
                 Write-Host "  SUCCESS: Cargo.lock regenerated successfully" -ForegroundColor Green
                 Run-Check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
                 Run-Check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+                $oldEA2 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                & rustup target add $crossTarget --toolchain 1.70.0 2>&1 | Out-Null
+                $ErrorActionPreference = $oldEA2
+                Run-Check "MSRV Cross-platform Clippy ($crossTarget)" "rustup run 1.70.0 cargo clippy --target $crossTarget --all-targets --all-features -- -D warnings"
             } else {
                 throw "generate-lockfile failed"
             }
@@ -293,6 +313,8 @@ if (Get-Command rustup -ErrorAction SilentlyContinue) {
             Write-Host "  INFO: Trying fallback: cargo update then check" -ForegroundColor Yellow
             Run-Check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
             Run-Check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+            & rustup target add $crossTarget --toolchain 1.70.0 2>&1 | Out-Null
+            Run-Check "MSRV Cross-platform Clippy ($crossTarget)" "rustup run 1.70.0 cargo clippy --target $crossTarget --all-targets --all-features -- -D warnings"
         }
     } else {
         Write-Host "WARNING: Rust 1.70.0 not installed. Installing for MSRV check..." -ForegroundColor Yellow
@@ -315,6 +337,10 @@ if (Get-Command rustup -ErrorAction SilentlyContinue) {
                         Run-Fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
                         Run-Check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
                         Run-Check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+                        $oldEA2 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                & rustup target add $crossTarget --toolchain 1.70.0 2>&1 | Out-Null
+                $ErrorActionPreference = $oldEA2
+                        Run-Check "MSRV Cross-platform Clippy ($crossTarget)" "rustup run 1.70.0 cargo clippy --target $crossTarget --all-targets --all-features -- -D warnings"
                     } else {
                         throw "generate-lockfile failed"
                     }
@@ -324,6 +350,10 @@ if (Get-Command rustup -ErrorAction SilentlyContinue) {
                     Run-Fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
                     Run-Check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
                     Run-Check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+                    $oldEA2 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                & rustup target add $crossTarget --toolchain 1.70.0 2>&1 | Out-Null
+                $ErrorActionPreference = $oldEA2
+                    Run-Check "MSRV Cross-platform Clippy ($crossTarget)" "rustup run 1.70.0 cargo clippy --target $crossTarget --all-targets --all-features -- -D warnings"
                 }
             } else {
                 throw "toolchain install failed"

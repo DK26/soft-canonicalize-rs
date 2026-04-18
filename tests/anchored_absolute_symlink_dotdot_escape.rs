@@ -49,7 +49,7 @@ fn absolute_symlink_target_with_leading_dotdot_must_not_escape_anchor() {
     fs::create_dir(&anchor).unwrap();
 
     let secret_path = tmp.path().join("outside_secret");
-    fs::write(&secret_path, b"CONFIDENTIAL").unwrap();
+    fs::write(secret_path, b"CONFIDENTIAL").unwrap();
 
     // Raw absolute symlink target "/../outside_secret":
     //   - is_absolute() == true (leading "/")
@@ -58,7 +58,7 @@ fn absolute_symlink_target_with_leading_dotdot_must_not_escape_anchor() {
     //     producing "<anchor>/../outside_secret" — which the kernel will resolve
     //     to "<tmp>/outside_secret" and READ THE SECRET.
     let link = anchor.join("link");
-    symlink("/../outside_secret", &link).unwrap();
+    symlink("/../outside_secret", link).unwrap();
 
     let clamped = anchored_canonicalize(&anchor, "link")
         .expect("anchored_canonicalize should succeed on a valid symlink");
@@ -105,7 +105,7 @@ fn absolute_symlink_target_with_interior_dotdot_must_not_escape_anchor() {
     fs::create_dir(&anchor).unwrap();
 
     let secret_path = tmp.path().join("outside_secret2");
-    fs::write(&secret_path, b"TOPSECRET").unwrap();
+    fs::write(secret_path, b"TOPSECRET").unwrap();
 
     // Target "/foo/../../outside_secret2":
     //   - strip_root_prefix → "foo/../../outside_secret2"
@@ -118,7 +118,7 @@ fn absolute_symlink_target_with_interior_dotdot_must_not_escape_anchor() {
     fs::create_dir(anchor.join("foo")).unwrap();
 
     let link = anchor.join("link");
-    symlink("/foo/../../outside_secret2", &link).unwrap();
+    symlink("/foo/../../outside_secret2", link).unwrap();
 
     let clamped =
         anchored_canonicalize(&anchor, "link").expect("anchored_canonicalize should succeed");
