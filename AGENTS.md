@@ -113,6 +113,56 @@ These scripts:
 2. If these tests compare with `std::fs::canonicalize` without feature-conditional assertions, they will FAIL in CI when dunce feature is enabled
 3. You won't catch these failures until after you push to GitHub
 
+### Junction Fallback — the Preferred Remedy, Not Plain Skip
+
+A test that merely skips on error 1314 is a CI-only test: the developer never
+sees it pass on their own machine and cannot reproduce a CI failure locally.
+When the behavior under test does not require true symlink semantics
+(reparse-point resolution is sufficient), use an NTFS **junction** as a
+fallback so the test runs on non-admin Windows sessions too.
+
+**Rules:**
+
+1. **Use the existing helper, don't inline** — a `create_symlink_or_junction`
+   helper already lives in `tests/test_helpers/`. Integration tests under
+   `tests/` must call that helper rather than re-implementing the try-symlink-
+   then-junction pattern. If you find yourself writing `match symlink_dir(...)
+   { Err(e) if ... raw_os_error() == Some(1314) => junction_verbatim::create
+   (...) }` by hand in an integration test, stop and use the helper.
+
+2. **`src/tests/` unit tests** can't import the helper (different crate
+   boundary). For those, either: (a) move the test to `tests/` and use the
+   helper, or (b) inline the two-arm fallback with the `junction-verbatim`
+   dev-dependency. Do NOT add a second module that re-exports a parallel
+   helper; one canonical helper per repo.
+
+3. **Junction semantic gotcha**: junctions require an ABSOLUTE target and can
+   only point at directories on the same volume. Symlinks accept both
+   relative and absolute targets. When designing a test that must work via
+   either mechanism, structure it with an absolute target so the same setup
+   works for both — don't write two parallel tests for the "symlink only" and
+   "junction only" cases.
+
+4. **When junction is not an acceptable fallback**: tests that specifically
+   exercise relative-symlink target resolution, or absolute symlink targets
+   outside the anchor's volume, must remain symlink-only and skip on 1314.
+   Document why junction won't satisfy the test in a short comment.
+
+5. **Do not replace or alter an existing regression test with a junction
+   variant**. Junction covers a different code path (absolute-target reparse
+   point) than a relative symlink. If both paths matter, ADD a sibling test;
+   never rename or rewrite the original. Regression tests are append-only —
+   the name and assertions at release time must survive intact so future
+   bisects can pinpoint behaviour changes.
+
+6. **Verify the test actually ran locally.** A test that prints "skipping:
+   symlink creation not permitted" and returns `Ok(())` is not evidence of
+   correctness. When reporting a fix, confirm via the test runner's output
+   (`... ok` with execution time) that the test body executed. If every
+   relevant test printed a skip line, you have no local proof — add a
+   junction fallback (as a SIBLING test per rule 5) or run in an elevated /
+   Developer-Mode session before claiming the fix works.
+
 **How to Identify These Tests**:
 Search for these patterns in test files:
 ```bash

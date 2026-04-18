@@ -55,6 +55,54 @@ fn anchored_relative_symlink_keeps_clamp_windows() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Sibling of `anchored_relative_symlink_keeps_clamp_windows` that covers the
+/// DIFFERENT code path: an absolute link target already inside the anchor
+/// (strip-anchor-prefix + rejoin branch of `resolve_anchored_symlink_chain`).
+/// Uses a directory symlink when permitted and falls back to a junction
+/// (`junction-verbatim`) on error 1314, so non-admin / non-Developer-Mode
+/// sessions still exercise the floor-aware `..` pop in `anchored.rs`.
+/// Both code paths must produce `<anchor>/opt/subdir/hello/world`.
+#[test]
+fn anchored_symlink_or_junction_keeps_clamp_windows() -> std::io::Result<()> {
+    use std::io;
+    use std::os::windows::fs::symlink_dir;
+
+    let td = TempDir::new()?;
+    let anchor = td.path().join("home").join("jail");
+    fs::create_dir_all(&anchor)?;
+    fs::create_dir_all(anchor.join("opt").join("subdir").join("special"))?;
+    fs::create_dir_all(
+        anchor
+            .join("opt")
+            .join("subdir")
+            .join("hello")
+            .join("world"),
+    )?;
+
+    let base = soft_canonicalize(&anchor)?;
+    let link = base.join("special");
+    let absolute_target = base.join("opt").join("subdir").join("special");
+
+    // Try a symlink first; fall back to a junction if Windows denies symlink
+    // creation (error 1314). Junctions need an absolute target, so we use one
+    // here for both variants — it keeps the setup uniform.
+    match symlink_dir(&absolute_target, &link) {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(1314) => {
+            junction_verbatim::create(&absolute_target, &link)?;
+        }
+        Err(e) => return Err(e),
+    }
+
+    // `special` resolves via the link to `<base>/opt/subdir/special`; the
+    // following `..` must pop to `<base>/opt/subdir`; then `hello/world` is
+    // appended. The bug would leak `special\hello\world` into the tail.
+    let out = anchored_canonicalize(&base, r"special\..\hello\world")?;
+    let expected = base.join("opt").join("subdir").join("hello").join("world");
+    assert_eq!(out, expected);
+    Ok(())
+}
+
 #[test]
 fn anchored_absolute_symlink_is_clamped_windows() -> std::io::Result<()> {
     use std::io;

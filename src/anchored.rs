@@ -2,10 +2,25 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::error::error_with_path;
+use crate::symlink::component_eq;
 #[cfg(windows)]
 use crate::windows::{
     ensure_windows_extended_prefix, is_incomplete_unc, validate_windows_ads_layout,
 };
+
+/// True iff `path` has a strict component-prefix of `floor` and at least one
+/// component beyond it, using `component_eq` (so `Disk(C)` ~ `VerbatimDisk(C)`).
+/// This is the anchor-floor predicate for `..` pops in `anchored_canonicalize`.
+fn is_strictly_below(path: &Path, floor: &Path) -> bool {
+    let mut p = path.components();
+    for fc in floor.components() {
+        match p.next() {
+            Some(c) if component_eq(&c, &fc) => continue,
+            _ => return false,
+        }
+    }
+    p.next().is_some()
+}
 
 /// Canonicalize a user-provided path relative to an anchor directory, with virtual filesystem semantics.
 ///
@@ -221,8 +236,15 @@ pub fn anchored_canonicalize(
                 }
             }
             Component::ParentDir => {
-                // Clamp ".." to anchor boundary
-                if base != anchor_floor && base.starts_with(&anchor_floor) {
+                // Pop only when `base` is STRICTLY below the floor. We compare
+                // component-wise with `component_eq` so that a `Disk(C)` floor
+                // matches a `VerbatimDisk(C)` base (or vice versa): `soft_canonicalize`
+                // can return either form depending on the `dunce` feature and on
+                // whether symlink resolution re-entered via `fs::canonicalize`,
+                // and the stdlib `Path::starts_with` treats those as non-equal.
+                // Using the naive check silently skipped the pop, leaving the
+                // pre-`..` component in the result.
+                if is_strictly_below(&base, &anchor_floor) {
                     let _ = base.pop();
                 }
             }

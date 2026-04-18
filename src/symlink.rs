@@ -507,3 +507,62 @@ fn is_likely_system_symlink(path: &Path) -> bool {
 fn is_likely_system_symlink(_path: &Path) -> bool {
     false
 }
+
+#[cfg(all(test, windows, feature = "anchored"))]
+mod clamp_verbatim_regression {
+    //! Regression: `normalize_and_clamp_to_anchor` must return a path whose
+    //! prefix form matches the anchor's, so that downstream callers using
+    //! stdlib `Path::starts_with` (which treats `Disk` != `VerbatimDisk`) get
+    //! the match they expect.
+    //!
+    //! The CI-only failure in
+    //! `anchored_security::windows_symlink::anchored_relative_symlink_keeps_clamp_windows`
+    //! traced to this: when `is_within_anchor` was true, the function returned
+    //! the `simple_normalize_path` output directly, which used to come back
+    //! with `Disk` prefix even for a `VerbatimDisk` input. The caller's
+    //! `base.starts_with(&anchor_floor)` then returned false, the `..` clamp
+    //! was skipped, and the stale component leaked into the final path.
+    //!
+    //! This test exercises the clamp helper directly with a hand-built
+    //! verbatim path, so it triggers the exact failure path without needing
+    //! symlink creation privileges (which Windows denies in non-admin sessions,
+    //! silently skipping the integration test above).
+    use super::normalize_and_clamp_to_anchor;
+    use std::path::{Component, Path, Prefix};
+
+    fn first_prefix_kind(p: &Path) -> Option<Prefix<'_>> {
+        p.components().next().and_then(|c| match c {
+            Component::Prefix(pc) => Some(pc.kind()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn verbatim_anchor_and_within_input_yields_verbatim_output() {
+        let anchor = Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\.tmpAAAA\home\jail");
+        // `current` is anchor + opt/subdir/special — already within the anchor,
+        // which takes the `is_within_anchor = true` branch (the buggy one).
+        let current = Path::new(
+            r"\\?\C:\Users\runneradmin\AppData\Local\Temp\.tmpAAAA\home\jail\opt\subdir\special",
+        );
+
+        let (clamped, was_clamped) = normalize_and_clamp_to_anchor(current, anchor);
+
+        assert!(
+            !was_clamped,
+            "input lies within anchor; clamp helper should signal no reclamp"
+        );
+        assert!(
+            matches!(first_prefix_kind(&clamped), Some(Prefix::VerbatimDisk(b'C'))),
+            "clamped output must preserve VerbatimDisk so stdlib starts_with works; got {:?} for {:?}",
+            first_prefix_kind(&clamped),
+            &clamped
+        );
+        assert!(
+            clamped.starts_with(anchor),
+            "stdlib Path::starts_with must match the anchor; got clamped={:?}, anchor={:?}",
+            &clamped,
+            anchor
+        );
+    }
+}
