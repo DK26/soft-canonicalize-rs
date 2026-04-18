@@ -52,6 +52,78 @@ pub(crate) fn strip_root_prefix(path: &Path) -> PathBuf {
     }
 }
 
+/// Component-wise equality that treats Windows `VerbatimDisk(X)` and `Disk(X)` as
+/// equivalent (same for `VerbatimUNC` vs `UNC`, case-insensitive for drive letters
+/// and UNC server/share). On non-Windows this is a plain `==`.
+#[cfg(feature = "anchored")]
+#[inline]
+pub(crate) fn component_eq(a: &std::path::Component, b: &std::path::Component) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        match (a, b) {
+            (Component::Prefix(ap), Component::Prefix(bp)) => match (ap.kind(), bp.kind()) {
+                (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
+                | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
+                | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
+                | (Prefix::Disk(ad), Prefix::Disk(bd)) => ad.eq_ignore_ascii_case(&bd),
+                (Prefix::VerbatimUNC(as1, as2), Prefix::UNC(bs1, bs2))
+                | (Prefix::UNC(as1, as2), Prefix::VerbatimUNC(bs1, bs2))
+                | (Prefix::VerbatimUNC(as1, as2), Prefix::VerbatimUNC(bs1, bs2))
+                | (Prefix::UNC(as1, as2), Prefix::UNC(bs1, bs2)) => {
+                    as1.eq_ignore_ascii_case(bs1) && as2.eq_ignore_ascii_case(bs2)
+                }
+                _ => ap == bp,
+            },
+            _ => a == b,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        a == b
+    }
+}
+
+/// Normalize `current` and clamp it inside `anchor`.
+///
+/// - Collapses `.` and `..` segments lexically (so literal `..` from a raw symlink
+///   target cannot escape when the OS later resolves the returned path).
+/// - If the normalized path is not within `anchor`, rebuilds it as
+///   `anchor + (current components after longest common prefix)`.
+///
+/// Returns `(clamped_path, was_clamped)`.
+#[cfg(feature = "anchored")]
+pub(crate) fn normalize_and_clamp_to_anchor(current: &Path, anchor: &Path) -> (PathBuf, bool) {
+    let normalized = simple_normalize_path(current);
+
+    let anchor_comps: Vec<_> = anchor.components().collect();
+    let current_comps: Vec<_> = normalized.components().collect();
+
+    let is_within_anchor = current_comps.len() >= anchor_comps.len()
+        && current_comps
+            .iter()
+            .zip(anchor_comps.iter())
+            .all(|(c, a)| component_eq(c, a));
+
+    if is_within_anchor {
+        (normalized, false)
+    } else {
+        let mut common_depth = 0;
+        for (a, c) in anchor_comps.iter().zip(current_comps.iter()) {
+            if component_eq(a, c) {
+                common_depth += 1;
+            } else {
+                break;
+            }
+        }
+        let mut clamped = anchor.to_path_buf();
+        for comp in current_comps.iter().skip(common_depth) {
+            clamped.push(comp);
+        }
+        (clamped, true)
+    }
+}
+
 /// Resolve a symlink chain with anchor clamping for absolute targets.
 ///
 /// This resolver implements virtual filesystem semantics by clamping absolute symlink
@@ -73,31 +145,23 @@ pub(crate) fn strip_root_prefix(path: &Path) -> PathBuf {
 ///
 /// When an absolute symlink target is encountered, it's handled in one of two ways:
 ///
-/// **Case 1: Target already within anchor** (host-style absolute path)
-/// ```text
-/// // Symlink: /tmp/anchor/mylink -> /tmp/anchor/docs/file
-/// // Anchor: /tmp/anchor
-/// // Process: Strip anchor prefix → "docs/file" → Rejoin to anchor
-/// // Result: /tmp/anchor/docs/file ✅ (stays within anchor)
-/// ```
+/// **Case 1: Target already within anchor** (host-style absolute path).
+/// A symlink `/tmp/anchor/mylink` pointing to `/tmp/anchor/docs/file` with
+/// anchor `/tmp/anchor`: the anchor prefix is stripped to `docs/file` and
+/// rejoined to the anchor, yielding `/tmp/anchor/docs/file` — stays within anchor.
 ///
-/// **Case 2: Target outside anchor** (virtual-style absolute path)
-/// ```text
-/// // Symlink: /tmp/anchor/mylink -> /etc/passwd
-/// // Anchor: /tmp/anchor
-/// // Process: Strip root prefix → "etc/passwd" → Join to anchor
-/// // Result: /tmp/anchor/etc/passwd ✅ (clamped to anchor)
-/// ```
+/// **Case 2: Target outside anchor** (virtual-style absolute path).
+/// A symlink `/tmp/anchor/mylink` pointing to `/etc/passwd` with anchor
+/// `/tmp/anchor`: the root prefix is stripped to `etc/passwd` and joined to
+/// the anchor, yielding `/tmp/anchor/etc/passwd` — clamped to anchor.
 ///
 /// Both cases ensure the final path stays within the anchor, implementing true
 /// chroot-like behavior where the anchor is treated as the virtual root (`/`).
 ///
 /// # Example
-/// ```text
-/// // Symlink: /anchor/mylink -> /etc/config
-/// // Result: /anchor/etc/config (clamped to anchor)
-/// let result = resolve_anchored_symlink_chain(&Path::new("/anchor/mylink"), &Path::new("/anchor"))?;
-/// ```
+///
+/// A symlink at `/anchor/mylink` pointing to `/etc/config`, with anchor
+/// `/anchor`, resolves to `/anchor/etc/config` (clamped to anchor).
 #[cfg(feature = "anchored")]
 pub(crate) fn resolve_anchored_symlink_chain(
     symlink_path: &Path,
@@ -114,7 +178,14 @@ pub(crate) fn resolve_anchored_symlink_chain(
     };
 
     loop {
-        // Detect cycles using the textual path (no extra IO)
+        // Detect cycles using the textual path (no extra IO).
+        // Why textual (not case-normalized): on Windows's case-insensitive FS,
+        // a cycle expressed in mixed case (`/Anchor/x` ↔ `/anchor/x`) won't
+        // match here and falls through to the `effective_max_depth` cap below —
+        // same outcome (InvalidInput, "Too many levels of symbolic links"),
+        // just reached via depth exhaustion instead of early detection.
+        // Case-normalizing would require per-component FS queries; the depth
+        // cap is cheap and sufficient.
         if visited.iter().any(|s| s == current.as_os_str()) {
             return Err(error_with_path(
                 io::ErrorKind::InvalidInput,
@@ -151,17 +222,15 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     // AND 8.3 short name vs long name mismatches (e.g., RUNNER~1 vs runneradmin)
                     #[cfg(windows)]
                     let rel_path = {
-                        use std::path::{Component, Prefix};
-
-                        // First, try to canonicalize the target to expand 8.3 short names
-                        // This is needed because junction targets often contain short names
-                        // while the anchor uses long names (or vice versa)
+                        // Expand 8.3 short names in the target so it can be compared with the
+                        // anchor (which uses long names on Windows).  Junction targets often
+                        // carry 8.3 names inherited from the caller's working directory.
                         let target_for_comparison =
                             if let Ok(canonical_target) = std::fs::canonicalize(&target) {
                                 canonical_target
                             } else {
-                                // If canonicalization fails (target doesn't fully exist),
-                                // try to canonicalize the deepest existing prefix
+                                // Target doesn't fully exist: canonicalize the deepest existing
+                                // prefix and re-attach the non-existing suffix verbatim.
                                 let mut check = target.clone();
                                 let mut suffix_parts = Vec::new();
                                 while !check.as_os_str().is_empty() {
@@ -186,46 +255,18 @@ pub(crate) fn resolve_anchored_symlink_chain(
                                 }
                             };
 
-                        // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
-                        let components_equal = |a: &Component, b: &Component| -> bool {
-                            match (a, b) {
-                                (Component::Prefix(ap), Component::Prefix(bp)) => {
-                                    match (ap.kind(), bp.kind()) {
-                                        (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
-                                        | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
-                                        | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
-                                        | (Prefix::Disk(ad), Prefix::Disk(bd)) => {
-                                            ad.eq_ignore_ascii_case(&bd)
-                                        }
-                                        (Prefix::VerbatimUNC(as1, as2), Prefix::UNC(bs1, bs2))
-                                        | (Prefix::UNC(as1, as2), Prefix::VerbatimUNC(bs1, bs2))
-                                        | (
-                                            Prefix::VerbatimUNC(as1, as2),
-                                            Prefix::VerbatimUNC(bs1, bs2),
-                                        )
-                                        | (Prefix::UNC(as1, as2), Prefix::UNC(bs1, bs2)) => {
-                                            as1.eq_ignore_ascii_case(bs1)
-                                                && as2.eq_ignore_ascii_case(bs2)
-                                        }
-                                        _ => ap == bp,
-                                    }
-                                }
-                                _ => a == b,
-                            }
-                        };
-
                         let anchor_comps: Vec<_> = anchor.components().collect();
                         let target_comps: Vec<_> = target_for_comparison.components().collect();
 
-                        // Check if target starts with anchor (using component-aware comparison)
+                        // Component-aware prefix match handles `\\?\C:` vs `C:` and UNC
+                        // verbatim-vs-legacy equivalence (see `component_eq`).
                         let is_within_anchor = target_comps.len() >= anchor_comps.len()
                             && target_comps
                                 .iter()
                                 .zip(anchor_comps.iter())
-                                .all(|(t, a)| components_equal(t, a));
+                                .all(|(t, a)| component_eq(t, a));
 
                         if is_within_anchor {
-                            // Build relative path from remaining components
                             let mut rel = std::path::PathBuf::new();
                             for comp in target_comps.iter().skip(anchor_comps.len()) {
                                 rel.push(comp);
@@ -239,83 +280,31 @@ pub(crate) fn resolve_anchored_symlink_chain(
                     #[cfg(not(windows))]
                     let rel_path = target.strip_prefix(anchor).ok().map(|p| p.to_path_buf());
 
-                    if let Some(rel) = rel_path {
+                    let tentative = if let Some(rel) = rel_path {
                         // Target is already within anchor: rejoin to anchor to normalize
-                        current = anchor.join(rel);
+                        anchor.join(rel)
                     } else {
                         // Target is outside anchor: strip root and clamp to anchor
                         // /etc/passwd -> anchor/etc/passwd
                         let stripped = strip_root_prefix(&target);
-                        current = anchor.join(stripped);
-                    }
+                        anchor.join(stripped)
+                    };
+                    // SECURITY: Normalize + clamp. The raw symlink target (and, in some
+                    // Windows fallback paths, the computed `rel`) may contain literal `..`
+                    // segments. Without this step, the returned path would still textually
+                    // start with the anchor but escape when the OS resolves it.
+                    let (clamped, _was_clamped) = normalize_and_clamp_to_anchor(&tentative, anchor);
+                    current = clamped;
                 } else {
                     // Relative symlink: resolve from parent, then clamp to anchor
                     // Virtual filesystem semantics: relative symlinks are resolved as if
                     // the anchor is the root - they cannot escape the anchor boundary
                     let parent = current.parent();
                     if let Some(p) = parent {
-                        current = simple_normalize_path(&p.join(target));
-
-                        // CLAMP: Ensure relative symlink resolution stays within anchor
-                        // If the resolved path escapes the anchor, clamp it back using common ancestor logic
-                        //
-                        // Use component-based comparison to handle Windows prefix format differences
-                        // (\\?\ vs normal paths) - components() normalizes these away
-                        let anchor_comps: Vec<_> = anchor.components().collect();
-                        let current_comps: Vec<_> = current.components().collect();
-
-                        // Helper to compare components, treating VerbatimDisk(X) == Disk(X)
-                        #[cfg(windows)]
-                        let components_equal = |a: &std::path::Component,
-                                                b: &std::path::Component|
-                         -> bool {
-                            use std::path::{Component, Prefix};
-                            match (a, b) {
-                                (Component::Prefix(ap), Component::Prefix(bp)) => {
-                                    // Treat VerbatimDisk and Disk as equivalent if same drive letter
-                                    match (ap.kind(), bp.kind()) {
-                                        (Prefix::VerbatimDisk(ad), Prefix::Disk(bd))
-                                        | (Prefix::Disk(ad), Prefix::VerbatimDisk(bd))
-                                        | (Prefix::VerbatimDisk(ad), Prefix::VerbatimDisk(bd))
-                                        | (Prefix::Disk(ad), Prefix::Disk(bd)) => ad == bd,
-                                        _ => ap == bp, // Other prefix types must match exactly
-                                    }
-                                }
-                                _ => a == b, // Non-prefix components must match exactly
-                            }
-                        };
-                        #[cfg(not(windows))]
-                        let components_equal =
-                            |a: &std::path::Component, b: &std::path::Component| a == b;
-
-                        // Check if current path is within anchor by comparing components
-                        let is_within_anchor = current_comps.len() >= anchor_comps.len()
-                            && current_comps
-                                .iter()
-                                .zip(anchor_comps.iter())
-                                .all(|(c, a)| components_equal(c, a));
-
-                        let _was_clamped = if !is_within_anchor {
-                            // Find longest common prefix by comparing components
-                            let mut common_depth = 0;
-                            for (a, c) in anchor_comps.iter().zip(current_comps.iter()) {
-                                if components_equal(a, c) {
-                                    common_depth += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            // Build clamped path: anchor + (current components after common prefix)
-                            let mut clamped = anchor.to_path_buf();
-                            for comp in current_comps.iter().skip(common_depth) {
-                                clamped.push(comp);
-                            }
-                            current = clamped;
-                            true // Mark that we clamped
-                        } else {
-                            false // No clamping needed
-                        };
+                        let joined = p.join(target);
+                        let (clamped, _was_clamped) =
+                            normalize_and_clamp_to_anchor(&joined, anchor);
+                        current = clamped;
 
                         // FIX: Re-canonicalize on Windows to ensure:
                         // 1. Prefix format consistency (\\?\ vs regular paths)
@@ -391,7 +380,9 @@ pub(crate) fn resolve_simple_symlink_chain(symlink_path: &Path) -> io::Result<Pa
     };
 
     loop {
-        // Detect cycles using the textual path (no extra IO)
+        // Detect cycles using the textual path (no extra IO).
+        // See `resolve_anchored_symlink_chain` for the rationale behind using
+        // textual (not case-normalized) comparison here.
         if visited.iter().any(|s| s == current.as_os_str()) {
             return Err(error_with_path(
                 io::ErrorKind::InvalidInput,
@@ -515,4 +506,63 @@ fn is_likely_system_symlink(path: &Path) -> bool {
 #[inline]
 fn is_likely_system_symlink(_path: &Path) -> bool {
     false
+}
+
+#[cfg(all(test, windows, feature = "anchored"))]
+mod clamp_verbatim_regression {
+    //! Regression: `normalize_and_clamp_to_anchor` must return a path whose
+    //! prefix form matches the anchor's, so that downstream callers using
+    //! stdlib `Path::starts_with` (which treats `Disk` != `VerbatimDisk`) get
+    //! the match they expect.
+    //!
+    //! The CI-only failure in
+    //! `anchored_security::windows_symlink::anchored_relative_symlink_keeps_clamp_windows`
+    //! traced to this: when `is_within_anchor` was true, the function returned
+    //! the `simple_normalize_path` output directly, which used to come back
+    //! with `Disk` prefix even for a `VerbatimDisk` input. The caller's
+    //! `base.starts_with(&anchor_floor)` then returned false, the `..` clamp
+    //! was skipped, and the stale component leaked into the final path.
+    //!
+    //! This test exercises the clamp helper directly with a hand-built
+    //! verbatim path, so it triggers the exact failure path without needing
+    //! symlink creation privileges (which Windows denies in non-admin sessions,
+    //! silently skipping the integration test above).
+    use super::normalize_and_clamp_to_anchor;
+    use std::path::{Component, Path, Prefix};
+
+    fn first_prefix_kind(p: &Path) -> Option<Prefix<'_>> {
+        p.components().next().and_then(|c| match c {
+            Component::Prefix(pc) => Some(pc.kind()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn verbatim_anchor_and_within_input_yields_verbatim_output() {
+        let anchor = Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\.tmpAAAA\home\jail");
+        // `current` is anchor + opt/subdir/special — already within the anchor,
+        // which takes the `is_within_anchor = true` branch (the buggy one).
+        let current = Path::new(
+            r"\\?\C:\Users\runneradmin\AppData\Local\Temp\.tmpAAAA\home\jail\opt\subdir\special",
+        );
+
+        let (clamped, was_clamped) = normalize_and_clamp_to_anchor(current, anchor);
+
+        assert!(
+            !was_clamped,
+            "input lies within anchor; clamp helper should signal no reclamp"
+        );
+        assert!(
+            matches!(first_prefix_kind(&clamped), Some(Prefix::VerbatimDisk(b'C'))),
+            "clamped output must preserve VerbatimDisk so stdlib starts_with works; got {:?} for {:?}",
+            first_prefix_kind(&clamped),
+            &clamped
+        );
+        assert!(
+            clamped.starts_with(anchor),
+            "stdlib Path::starts_with must match the anchor; got clamped={:?}, anchor={:?}",
+            &clamped,
+            anchor
+        );
+    }
 }

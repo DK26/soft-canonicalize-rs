@@ -427,6 +427,13 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         ));
     }
 
+    // Stage 0: reject NUL bytes before any FS contact.
+    // Why: stdlib's canonicalize also rejects NULs, but moving the check here
+    // guarantees our path-aware detail ("path contains null byte") is always
+    // observable via `IoErrorPathExt::soft_canon_detail()`, independent of
+    // stdlib behavior.
+    reject_nul_bytes(path)?;
+
     // Windows-only: explicit guard — reject incomplete UNC roots (\\server without a share)
     #[cfg(windows)]
     {
@@ -486,9 +493,6 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
         }
     }
     // At this point: path doesn't fully exist or canonicalize returned a recoverable error — continue.
-
-    // Stage 3.1: sanity check — validate no embedded NUL bytes (platform-specific)
-    reject_nul_bytes(path)?;
 
     // Stage 4: collect path components efficiently (root/prefix vs normal names)
     let mut components = Vec::new();
@@ -618,6 +622,12 @@ pub fn soft_canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     {
         result = dunce::simplified(&result).to_path_buf();
     }
+
+    // Stage Final: defense-in-depth — reject any NUL that may have entered via
+    // symlink target resolution or other FS returns. Standard FS APIs forbid
+    // NULs, so this should never fire; the check guarantees callers can treat
+    // the returned path as NUL-free for display, logging, or further processing.
+    reject_nul_bytes(&result)?;
 
     Ok(result)
 }

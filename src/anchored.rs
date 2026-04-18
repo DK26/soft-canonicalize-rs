@@ -2,10 +2,25 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::error::error_with_path;
+use crate::symlink::component_eq;
 #[cfg(windows)]
 use crate::windows::{
     ensure_windows_extended_prefix, is_incomplete_unc, validate_windows_ads_layout,
 };
+
+/// True iff `path` has a strict component-prefix of `floor` and at least one
+/// component beyond it, using `component_eq` (so `Disk(C)` ~ `VerbatimDisk(C)`).
+/// This is the anchor-floor predicate for `..` pops in `anchored_canonicalize`.
+fn is_strictly_below(path: &Path, floor: &Path) -> bool {
+    let mut p = path.components();
+    for fc in floor.components() {
+        match p.next() {
+            Some(c) if component_eq(&c, &fc) => continue,
+            _ => return false,
+        }
+    }
+    p.next().is_some()
+}
 
 /// Canonicalize a user-provided path relative to an anchor directory, with virtual filesystem semantics.
 ///
@@ -205,48 +220,31 @@ pub fn anchored_canonicalize(
             Component::Normal(seg) => {
                 base.push(seg);
 
-                // Resolve symlink chain at `base` using anchor-aware resolver
+                // Resolve symlink chain at `base` using anchor-aware resolver, then funnel
+                // through the shared clamp helper so every anchor-clamping site in the crate
+                // uses the same component-aware, `..`-normalizing logic.  The resolver already
+                // clamps internally, but this final pass is defense-in-depth — if a future
+                // code path bypasses the internal clamp, the escape still cannot reach `base`.
                 if let Ok(meta) = std::fs::symlink_metadata(&base) {
                     if meta.file_type().is_symlink() {
-                        // Use anchored symlink resolver that implements virtual filesystem semantics
                         let resolved =
                             crate::symlink::resolve_anchored_symlink_chain(&base, &anchor_floor)?;
-
-                        // Final safety check: ensure resolved path is within anchor
-                        if !resolved.starts_with(&anchor_floor) {
-                            // Virtual filesystem semantics: reinterpret escaped path as relative to anchor
-                            // Find common ancestor and preserve relative path structure
-                            // Example: resolved = /tmp/xyz/opt/file, anchor = /tmp/xyz/home/jail
-                            // Common ancestor: /tmp/xyz
-                            // Resolved relative to common: opt/file
-                            // Result: /tmp/xyz/home/jail/opt/file
-
-                            // Find longest common prefix by comparing components
-                            let mut common_depth = 0;
-                            let anchor_comps: Vec<_> = anchor_floor.components().collect();
-                            let resolved_comps: Vec<_> = resolved.components().collect();
-                            for (a, r) in anchor_comps.iter().zip(resolved_comps.iter()) {
-                                if a == r {
-                                    common_depth += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            // Build clamped path: anchor + (resolved components after common prefix)
-                            base = anchor_floor.clone();
-                            for comp in resolved_comps.iter().skip(common_depth) {
-                                base.push(comp);
-                            }
-                        } else {
-                            base = resolved;
-                        }
+                        let (clamped, _was_clamped) =
+                            crate::symlink::normalize_and_clamp_to_anchor(&resolved, &anchor_floor);
+                        base = clamped;
                     }
                 }
             }
             Component::ParentDir => {
-                // Clamp ".." to anchor boundary
-                if base != anchor_floor && base.starts_with(&anchor_floor) {
+                // Pop only when `base` is STRICTLY below the floor. We compare
+                // component-wise with `component_eq` so that a `Disk(C)` floor
+                // matches a `VerbatimDisk(C)` base (or vice versa): `soft_canonicalize`
+                // can return either form depending on the `dunce` feature and on
+                // whether symlink resolution re-entered via `fs::canonicalize`,
+                // and the stdlib `Path::starts_with` treats those as non-equal.
+                // Using the naive check silently skipped the pop, leaving the
+                // pre-`..` component in the result.
+                if is_strictly_below(&base, &anchor_floor) {
                     let _ = base.pop();
                 }
             }
@@ -286,6 +284,10 @@ pub fn anchored_canonicalize(
     {
         base = dunce::simplified(&base).to_path_buf();
     }
+
+    // Final: defense-in-depth — reject any NUL that may have entered via symlink
+    // target resolution. See `soft_canonicalize` for the rationale.
+    crate::reject_nul_bytes(&base)?;
 
     Ok(base)
 }

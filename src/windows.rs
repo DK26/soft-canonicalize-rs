@@ -5,18 +5,34 @@ use crate::error::error_with_path;
 
 #[inline]
 pub(crate) fn is_incomplete_unc(p: &Path) -> bool {
-    // Detect \\server or \\server\\ (no share). Exclude verbatim and device namespaces.
+    // Detect \\server, //server, or any two-separator prefix with no share.
+    // Why: forward-slash UNCs are not classified by Rust's Prefix parser, so
+    // `//server` would otherwise slip past this guard and be reinterpreted by
+    // stdlib as relative-to-cwd (e.g., `//secret` → `C:\secret`), surprising
+    // callers who passed what they thought was a UNC path.
+    // Exclude verbatim (`\\?\`, `//?/`) and device (`\\.\`, `//./`) namespaces.
     let raw = p.as_os_str().to_string_lossy();
-    if raw.starts_with("\\\\") && !raw.starts_with("\\\\?\\") && !raw.starts_with("\\\\.\\") {
-        let mut parts = raw
-            .trim_start_matches(['\\', '/'])
-            .split(['\\', '/'])
-            .filter(|s| !s.is_empty());
-        let server = parts.next();
-        let share = parts.next();
-        return server.is_some() && share.is_none();
+    let starts_with_two_seps = raw.starts_with("\\\\")
+        || raw.starts_with("//")
+        || raw.starts_with("\\/")
+        || raw.starts_with("/\\");
+    if !starts_with_two_seps {
+        return false;
     }
-    false
+    // Check for verbatim/device namespaces using either slash variant at positions 2-3
+    let bytes = raw.as_bytes();
+    let is_verbatim_or_device =
+        bytes.len() >= 4 && matches!(bytes[2], b'?' | b'.') && matches!(bytes[3], b'\\' | b'/');
+    if is_verbatim_or_device {
+        return false;
+    }
+    let mut parts = raw
+        .trim_start_matches(['\\', '/'])
+        .split(['\\', '/'])
+        .filter(|s| !s.is_empty());
+    let server = parts.next();
+    let share = parts.next();
+    server.is_some() && share.is_none()
 }
 
 pub(crate) fn validate_windows_ads_layout(p: &Path) -> io::Result<()> {

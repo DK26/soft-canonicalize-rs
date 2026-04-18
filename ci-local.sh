@@ -229,6 +229,20 @@ echo
 # Run all CI checks in order
 run_check "Format Check" "cargo fmt --all -- --check"
 run_check "Clippy Lint" "cargo clippy --all-targets --all-features -- -D warnings"
+
+# Cross-platform Clippy: host clippy skips files gated for the OTHER platform
+# (e.g., tests starting with `#![cfg(unix)]` compile to nothing on Windows, so
+# clippy never lints them). Run clippy against the complement target so issues
+# like `needless_borrow` in cross-platform test files are caught before CI.
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+    CROSS_TARGET="x86_64-unknown-linux-gnu"
+else
+    CROSS_TARGET="x86_64-pc-windows-gnu"
+fi
+echo "Ensuring cross-platform target '$CROSS_TARGET' is installed..."
+rustup target add "$CROSS_TARGET" >/dev/null 2>&1 || true
+run_check "Cross-platform Clippy ($CROSS_TARGET)" "cargo clippy --target $CROSS_TARGET --all-targets --all-features -- -D warnings"
+
 # Skip 'cargo check' since 'cargo test' compiles everything anyway
 # Set SKIP_PERMISSION_TESTS for local testing (symlinks may require admin/Developer Mode)
 export SKIP_PERMISSION_TESTS=1
@@ -303,12 +317,16 @@ if command -v rustup &> /dev/null; then
             run_fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
             run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
             run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+            rustup target add "$CROSS_TARGET" --toolchain 1.70.0 >/dev/null 2>&1 || true
+            run_check "MSRV Cross-platform Clippy ($CROSS_TARGET)" "rustup run 1.70.0 cargo clippy --target $CROSS_TARGET --all-targets --all-features -- -D warnings"
         else
             echo "  ❌ Failed to generate Cargo.lock with Rust 1.70.0"
             echo "  💡 Trying fallback: cargo update then check"
             run_fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
             run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
             run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+            rustup target add "$CROSS_TARGET" --toolchain 1.70.0 >/dev/null 2>&1 || true
+            run_check "MSRV Cross-platform Clippy ($CROSS_TARGET)" "rustup run 1.70.0 cargo clippy --target $CROSS_TARGET --all-targets --all-features -- -D warnings"
         fi
     else
         echo "⚠️  Rust 1.70.0 not installed. Installing for MSRV check..."
@@ -327,12 +345,16 @@ if command -v rustup &> /dev/null; then
                 run_fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
                 run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
                 run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+                rustup target add "$CROSS_TARGET" --toolchain 1.70.0 >/dev/null 2>&1 || true
+                run_check "MSRV Cross-platform Clippy ($CROSS_TARGET)" "rustup run 1.70.0 cargo clippy --target $CROSS_TARGET --all-targets --all-features -- -D warnings"
             else
                 echo "  ❌ Failed to generate Cargo.lock with Rust 1.70.0"
                 echo "  💡 Trying fallback: cargo update then check"
                 run_fix "MSRV Clippy Auto-fix" "rustup run 1.70.0 cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features"
                 run_check "MSRV Check (Rust 1.70.0)" "rustup run 1.70.0 cargo check --verbose"
                 run_check "MSRV Clippy Lint" "rustup run 1.70.0 cargo clippy --all-targets --all-features -- -D warnings"
+                rustup target add "$CROSS_TARGET" --toolchain 1.70.0 >/dev/null 2>&1 || true
+                run_check "MSRV Cross-platform Clippy ($CROSS_TARGET)" "rustup run 1.70.0 cargo clippy --target $CROSS_TARGET --all-targets --all-features -- -D warnings"
             fi
         else
             echo "❌ Failed to install Rust 1.70.0. Skipping MSRV check."

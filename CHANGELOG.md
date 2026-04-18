@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-04-19
+
+### Security
+
+- **NUL-byte detection now always path-aware**: Moved `reject_nul_bytes` to Stage 0 of `soft_canonicalize` and added a final pass on the output. Guarantees that `IoErrorPathExt::soft_canon_detail()` consistently returns the path-aware `"path contains null byte"` detail instead of stdlib's generic `InvalidInput`, even when a NUL enters via symlink-target resolution.
+- **Fixed `anchored_canonicalize` escape via absolute `..` symlink targets**: Absolute symlink targets that began with `..` could escape the anchor. Extracted `normalize_and_clamp_to_anchor` so every clamp site in the crate uses the same `..`-normalizing, common-prefix-clamping logic.
+- **Forward-slash UNC rejection**: `is_incomplete_unc` now detects forward-slash forms (`//server`) and mixed-separator variants, while still correctly excluding verbatim (`\\?\`) and device (`\\.\`) namespaces for both separator kinds.
+- **Upgraded `proc-canonicalize` 0.1.2 → 0.1.3**: pulls in the upstream fix for a namespace-boundary bypass where paths like `/proc/<PID>/../<PID>/root` lexically normalized to `/proc/<PID>/root` but evaded detection; the scanner now performs lexical normalization before boundary detection. Also includes an indirect-symlink scanner performance improvement (hoisted scratch buffers eliminate per-iteration heap allocations).
+
+### Fixed
+
+- **Windows: `simple_normalize_path` now preserves `VerbatimDisk` prefix**: Building `\\?\` then pushing a drive letter silently dropped the verbatim marker, producing a `Prefix::Disk` output. Since `Path::starts_with` treats `Disk` and `VerbatimDisk` as distinct, anchored-symlink clamp checks against a verbatim floor would fail. Fixed by constructing the verbatim path as a single `PathBuf::from(format!(r"\\?\{drive}\"))`. Drive-relative inputs (`C:foo`) still skip the verbatim prefix to preserve per-drive CWD semantics.
+- **Windows: `anchored_canonicalize` `..` pop skipped on `Disk` vs `VerbatimDisk` prefix mismatch**: When `soft_canonicalize` returned a `Disk`-prefixed anchor floor (with the `dunce` feature) but symlink resolution brought the working path back through `fs::canonicalize` as `VerbatimDisk`, the stdlib `Path::starts_with` gate returned false, silently skipping the `..` pop and leaking the pre-`..` component into the final result. Now uses a component-wise `is_strictly_below` predicate built on the crate's `component_eq` helper, which equates the two prefix forms.
+
+### Added
+
+- **`component_eq` helper** (Windows-aware): treats `VerbatimDisk` vs `Disk` and `VerbatimUNC` vs `UNC` as equal, case-insensitive for drive letters and UNC server/share.
+- **`normalize_and_clamp_to_anchor` helper**: single source of truth for the `..`-normalizing, common-prefix-clamping logic used across the anchored code paths.
+- **Regression tests**:
+  - `tests/anchored_absolute_symlink_dotdot_escape.rs` — covers the anchored `..` escape fix for absolute symlink targets.
+  - `tests/regression_nul_byte_error_detail.rs` — pins the path-aware `soft_canon_detail()` output.
+  - `tests/regression_incomplete_unc_forward_slash.rs` — pins forward-slash UNC rejection.
+  - `anchored_security::windows_symlink::anchored_symlink_or_junction_keeps_clamp_windows` (sibling to `anchored_relative_symlink_keeps_clamp_windows`) — uses a directory symlink with NTFS-junction fallback on error 1314 so non-admin / non-Developer-Mode Windows sessions still exercise the anchor `..` pop via a real reparse point.
+  - `normalize::verbatim_prefix_regression` and `symlink::clamp_verbatim_regression` — pin `VerbatimDisk` preservation through normalization and clamping without requiring symlink-create privileges.
+- **AGENTS.md "Junction Fallback" rules**: codifies the pattern so tests exercise the code path locally via NTFS junctions (`create_symlink_or_junction` helper for integration tests, inline junction fallback for unit tests) instead of silently skipping on error 1314.
+
+### Changed
+
+- **AGENTS.md rewrite**: reorganized around maintenance principles (general-not-reactive, context-free rules, principles-over-examples), with expanded guidance on feature testing policy, symlink testing traps, git usage, coding guidelines, and test assertion style.
+- **Test reorganization**: split `unicode` and `windows_8_3` unit tests into thematic files for better readability and RAG retrieval.
+- **CI — cross-platform Clippy**: `ci-local.sh` and `ci-local.ps1` now run clippy against the complement target (`x86_64-unknown-linux-gnu` on Windows, `x86_64-pc-windows-gnu` on Linux), so cfg-gated files for the opposite platform are linted locally before hitting CI.
+
 ## [0.5.5] - 2026-04-04
 
 ### Fixed

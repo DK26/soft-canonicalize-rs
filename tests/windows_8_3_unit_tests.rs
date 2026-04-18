@@ -89,8 +89,7 @@ mod unit_tests {
             (r"C:\файл~1", false),     // Non-ASCII before ~
         ];
 
-        for (path_str, should_look_like_8_3) in valid_8_3.into_iter().chain(invalid_8_3.into_iter())
-        {
+        for (path_str, should_look_like_8_3) in valid_8_3.into_iter().chain(invalid_8_3) {
             let result = soft_canonicalize(path_str);
             if let Ok(path) = result {
                 println!(
