@@ -285,6 +285,76 @@ For necessary allocations (variable-length output):
 - Keep struct fields private when invariants must be enforced.  Expose
   transition methods that enforce them.
 
+### Lifetime Naming
+
+**Every named lifetime parameter must have a descriptive name that explains
+whose lifetime it represents.**  Single-letter lifetimes (`'a`, `'b`, `'c`,
+...) are **banned** — no exceptions, no "simple signature" carve-out.
+
+Name lifetimes after the data they bind to: `'path`, `'input`, `'src`,
+`'buf`, `'anchor`, `'cfg`, `'err`.  When a function takes two references,
+give each one a name that identifies its source (e.g. `fn f<'input, 'buf>
+(src: &'input str, dst: &'buf mut String)`).
+
+Exceptions (these are not "single-letter" names, they are language built-ins):
+
+- `'static` — Rust's built-in lifetime for program-long data.  Use it when
+  the borrow must outlive the process.
+- `'_` — the elided / anonymous lifetime.  Use it only where the compiler
+  already infers the lifetime and naming it would add no information
+  (e.g. `fmt::Formatter<'_>`).  Prefer a real name whenever the lifetime
+  appears in a function or type signature you author.
+
+**Why:** lifetimes are a contract between the caller and the function about
+who owns what for how long.  A name like `'a` forces every reader to
+reverse-engineer that contract from the signature.  A name like `'anchor`
+tells them instantly — the same way a well-named parameter does.  Stale
+single-letter names rot fastest: add a second lifetime and now `'a` and
+`'b` are a puzzle.  Descriptive names never rot.
+
+### Comments Explain Reasoning, Not Mechanics
+
+Comments must answer **why**: the reasoning, invariant, security property,
+non-obvious constraint, or history behind a workaround.  Never comment what
+the code already says — well-named identifiers are the canonical "what".
+
+- Good: `// SECURITY: clamp before join — raw target may contain ".." that`
+  `// escape the anchor when the OS resolves the returned path.`
+- Good: `// Fast-path: skip fs::canonicalize when lexical form is unchanged;`
+  `// avoids a syscall in the hot case.`
+- Bad: `// increment counter` above `counter += 1;`
+- Bad: `// call the helper` above a function call.
+
+When in doubt, add a short comment stating the invariant/reason.  A future
+reader (human or agent) who asks "why is this here?" must find the answer in
+the code — not in a commit message, issue tracker, or vanished conversation.
+Delete comments that only restate identifiers.
+
+### Doc Comment Discipline
+
+Doc comments (`///`, `//!`) must never hide executable content from the test
+harness.  **Forbidden fence styles in Rust doc comments** (they are all
+treated as test-skip or test-bypass mechanisms):
+
+- ` ```text ` — blocks code from compiling.  Use plain prose (no fence) or a
+  bulleted list instead.  For pseudocode illustrations, write them as prose.
+- ` ```ignore `, ` ```no_run `, ` ```should_panic `, ` ```compile_fail ` —
+  block or redirect execution.  Rewrite as a real runnable ` ```rust ` block
+  that `cargo test --doc` compiles and runs, or move the illustration into
+  a regular `#[test]` and reference it from the doc comment.
+
+Rules of thumb:
+
+- **Pseudocode** → write it as prose (no fence).
+- **Runnable Rust** → use the default ` ``` ` or ` ```rust ` fence and make
+  it actually compile and run under `cargo test --doc`.
+- **Private / `pub(crate)` items**: rustdoc does not execute their doctests,
+  so a ` ```rust ` block there is a lie that cannot be verified.  Use prose.
+
+This discipline applies to every Rust source file.  Plain Markdown files
+(`README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`) may use ` ```text ` freely —
+they are not processed by rustdoc.
+
 ### RAG / LLM-Friendly File Size
 
 Keep source files under **~600 lines** (production or test) to fit within a
@@ -553,7 +623,11 @@ We track test count as the sum of:
 - Number of `#[test]` items found under `src/` and `tests/` folders
 - Plus the number of Rust doc tests
 
-**Important**: Doc tests must be runnable. Do not use `no_run`, `ignore`, `should_panic`, or other attributes that prevent execution. All doc tests must compile and run successfully as part of `cargo test`.
+**Important**: Doc tests must be runnable.  See "Doc Comment Discipline"
+under Coding Guidelines for the authoritative rule — in short, the fences
+` ```text `, `no_run`, `ignore`, `should_panic`, and `compile_fail` are
+all banned in Rust doc comments.  All doc tests must compile and run
+successfully as part of `cargo test`.
 
 Commands to count tests:
 

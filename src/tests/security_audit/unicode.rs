@@ -98,6 +98,50 @@ fn test_null_byte_injection_extended() {
     }
 }
 
+/// WHITE-BOX: defense-in-depth — `reject_nul_bytes` must detect a NUL embedded
+/// in a PathBuf that could hypothetically come from a malicious symlink target
+/// (or a crafted FUSE / filesystem image) and bypass the Stage 0 input check.
+///
+/// Standard `symlink(2)` / `CreateSymbolicLink` reject NULs in targets at
+/// creation time, so we cannot synthesize this via normal FS APIs in CI.
+/// This test verifies the primitive is sound so the post-resolve call-site
+/// in `soft_canonicalize` / `anchored_canonicalize` will reliably catch any
+/// NUL that slips through.
+#[test]
+fn test_reject_nul_bytes_detects_nul_in_constructed_pathbuf() {
+    use crate::IoErrorPathExt;
+    use std::path::PathBuf;
+
+    #[cfg(unix)]
+    let nul_path: PathBuf = {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        PathBuf::from(OsString::from_vec(b"/tmp/resolved\0/suffix".to_vec()))
+    };
+    #[cfg(windows)]
+    let nul_path: PathBuf = {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        let units: Vec<u16> = "C:\\resolved"
+            .encode_utf16()
+            .chain(std::iter::once(0u16))
+            .chain("\\suffix".encode_utf16())
+            .collect();
+        PathBuf::from(OsString::from_wide(&units))
+    };
+    #[cfg(not(any(unix, windows)))]
+    let nul_path = PathBuf::from("resolved\0suffix");
+
+    let err =
+        crate::reject_nul_bytes(&nul_path).expect_err("NUL-containing PathBuf must be rejected");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(err.soft_canon_detail(), Some("path contains null byte"));
+
+    // And confirm a NUL-free PathBuf is NOT rejected (no false positives).
+    let clean = PathBuf::from("safe/path/without/nul");
+    assert!(crate::reject_nul_bytes(&clean).is_ok());
+}
+
 #[test]
 fn test_null_byte_error_consistency() {
     // Test that soft_canonicalize behaves consistently with std::fs::canonicalize
