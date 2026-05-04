@@ -318,6 +318,7 @@
 #[cfg(feature = "anchored")]
 mod anchored;
 mod error;
+mod ext;
 mod normalize;
 mod prefix;
 mod symlink;
@@ -327,6 +328,7 @@ mod windows;
 #[cfg(feature = "anchored")]
 pub use anchored::anchored_canonicalize;
 pub use error::{IoErrorPathExt, SoftCanonicalizeError};
+pub use ext::SoftCanonicalizeExt;
 pub use symlink::MAX_SYMLINK_DEPTH;
 
 use crate::error::error_with_path;
@@ -654,6 +656,7 @@ mod tests {
     mod edge_cases;
     mod exotic_cross_platform;
     mod exotic_windows;
+    mod ext_trait;
     mod format_verification;
     mod optimization;
     mod path_traversal;

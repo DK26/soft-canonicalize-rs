@@ -35,6 +35,7 @@ Every rule must stand on its own without session context.
 - `pub const MAX_SYMLINK_DEPTH: usize`
 - `pub struct SoftCanonicalizeError { path: PathBuf, detail: Cow<'static, str> }`
 - `pub trait IoErrorPathExt { fn offending_path(&self) -> Option<&Path>; fn soft_canon_detail(&self) -> Option<&str>; }`
+- `pub trait SoftCanonicalizeExt { fn soft_canonicalize(&self) -> std::io::Result<std::path::PathBuf>; }` — sealed; implemented for `std::path::Path` (and reachable on `PathBuf` via `Deref`).
 
 Do not change signatures or remove items without a clear migration plan and tests.
 
